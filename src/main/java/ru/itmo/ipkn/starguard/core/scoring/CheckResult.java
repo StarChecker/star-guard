@@ -22,6 +22,6 @@ public record CheckResult(
         if (Double.isNaN(value) || Double.isInfinite(value)) {
             return 0.0;
         }
-        return Math.max(0.0, Math.min(1.0, value));
+        return Math.clamp(value, 0.0, 1.0);
     }
 }

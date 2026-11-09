@@ -1,277 +1,228 @@
-# Star Guard — план core-логики (v1)
+# Star Guard — план core PoC (v1)
 
-> Статус: черновик к ревью команды · Ветка: `feature/core` · Владелец: Dev 3
+> Статус: черновик на согласование · Ветка: `feature/core`
 >
-> Основа: командные документы `README.md`, `PLAN.md`, `TASKS.md`, `CHECKS.md`
-> (концепция, план по дням, постановки C1–C5 и алгоритм сборки score).
+> Основа: командные документы `README.md`, `PLAN.md`, `TASKS.md`, `CHECKS.md`.
+> Этот документ заменяет предыдущую редакцию плана: **сначала делаем PoC-срез,
+> инфраструктурные модули (Kafka, Redis, SSE, UI) откладываем.**
 
 ---
 
-## 1. Что такое core и зачем он нужен
+## 1. Цель PoC
 
-`core` — это библиотека (Maven-модуль), в которой живёт **домен и вся логика
-оценки подозрительности**: контракты, снимок репозитория, пять проверок C1–C5,
-движок сборки итогового `suspicious score` и explain.
-
-Сервисы (`aggregation`, `storage-scoring`, `api`) пользуются core через
-публичный Java API и не знают о деталях алгоритмов. Core, в свою очередь,
-**не знает о Kafka, Redis, HTTP и Spring Boot runtime** — это позволяет:
-
-- тестировать логику на фикстурах без инфраструктуры (как и требует `TASKS.md`);
-- собирать один и тот же score в Streams-приложении и в REST-сервисе;
-- менять хранилище (Redis → ClickHouse) без изменения алгоритмов.
+Доказать сквозной сценарий end-to-end:
 
 ```
-GH Archive → Producer → Kafka → aggregation (окна) → storage-scoring (Redis)
-                                                        │
-                                                        │ RepoSnapshotAssembler
-                                                        ▼
-                                              ┌───────────────────┐
-                                              │       core        │
-                                              │  RepoSnapshot     │
-                                              │  RepoCheck × 5    │
-                                              │  ScoringEngine    │  → RepoScore (score, level, explain)
-                                              └───────────────────┘
-                                                        │
-                                                        ▼
-                                                   api (REST/SSE) → UI
+GET /api/v1/repos/owner/name
+        ↓
+клиент качает часовые дампы GH Archive и фильтрует события репозитория
+        ↓
+сервис считает статистику (звёзды, форки, пушы, уникальные акторы, динамика)
+        ↓
+движок scoring прогоняет проверки C1–C5 (замоканы) и собирает suspicious score
+        ↓
+REST отдаёт статистику + score с explain; Swagger позволяет отправить запрос
 ```
 
-**Границы ответственности:**
+**Критерий успеха демо:** открыть Swagger UI, отправить запрос по реальному
+репозиторию, получить статистику за окно последних часов и score, посчитанный
+настоящим движком на мок-проверках. Без Docker, без Kafka, без Redis.
 
-| Входит в core | Не входит в core |
-|---------------|------------------|
-| `GhEvent` — общая схема события (контракт с ingestion/aggregation) | Парсинг `.json.gz` GH Archive |
-| `RepoSnapshot`, `StarActor`, `OverlapStats`, `HourProfile` | Сборка `RepoSnapshot` из Redis (`storage-scoring`) |
-| Контракт `RepoCheck` / `CheckResult` | Kafka Streams, окна, trending |
-| Реализации проверок C1–C5 | REST/OpenAPI/SSE/UI |
-| `ScoringEngine`: веса, гейты, уровни, усиление, explain | Хранение истории score (Redis) |
-| `scoring.yaml`: загрузка, типизация, валидация | GitHub REST enrichment (stretch, сервисный слой) |
-| Утилиты для проверок: `clamp01`, медиана, скользящие окна, Jaccard, хэш актора | Метрики-инфраструктура и Grafana-дашборды (только Micrometer-метрики из core) |
+**Чего в PoC нет:** Kafka/Redpanda, Redis/ClickHouse, SSE/WebSocket, trending,
+30-дневные окна, история аккаунтов, собственный UI, Grafana, Docker Compose.
+Эти части остаются в плане команды на следующие итерации — PoC не должен им
+мешать (см. §14 «Путь к MVP»).
 
 ---
 
-## 2. Фичи первой версии
-
-Приоритеты: **Must** — без этого нет MVP; **Should** — делаем, если контракт
-стабилен; **Stretch** — не трогаем до feature freeze.
+## 2. Scope первой версии
 
 | ID | Фича | Приоритет | Критерий готовности |
 |----|------|-----------|---------------------|
-| F1 | Доменная модель и контракт (`RepoSnapshot`, `RepoCheck`, `CheckResult`, `RepoScore`) | Must | Контракт смержен в `main` до обеда дня 1; остальные пишут против него |
-| F2 | Реестр проверок через Spring DI + включение/веса из `scoring.yaml` | Must | Проверка регистрируется бин-классом, неактивные не вызываются |
-| F3 | C1 «Всплеск звёзд» (`BurstCheck`) | Must | Фикстуры `burst_spike` ≥ 0.9, `steady_growth` ≤ 0.2 (владелец — Dev 1) |
-| F4 | C2 «Свежие и пустые аккаунты» (`FreshAccountsCheck`) | Must | `fresh_farm` ≥ 0.9, `organic` ≤ 0.1 (Dev 2) |
-| F5 | C3 «Дисбаланс звёзды/активность» (`EngagementCheck`) | Must | `star_stuffing` ≥ 0.9, `healthy_lib` ≤ 0.2 (Dev 3) |
-| F6 | C4 «Пересечение акторов» (`ActorOverlapCheck`) | Must | `farm` ≥ 0.9, `random_overlap` ≤ 0.1 (Dev 4) |
-| F7 | C5 «Суточный профиль» (`CircadianCheck`) | Must | `night_farm` ≥ 0.8, `daytime_normal` ≤ 0.2 (Dev 5) |
-| F8 | `ScoringEngine`: взвешенная сборка, гейты, confidence, уровни, правила усиления | Must | Golden-тест на эталонном снапшоте даёт score из `CHECKS.md` §4 |
-| F9 | Explain: вклад каждой проверки (`contribution`), `details`, список применённых правил | Must | Ответ API совпадает по форме с примером из `CHECKS.md` §4 |
-| F10 | Типизированный `scoring.yaml` + fail-fast валидация на старте | Must | Веса, диапазоны, неизвестные ключи, дубли id — ошибка запуска с понятным текстом |
-| F11 | Устойчивость: изоляция падений проверок, детерминизм, Micrometer-метрики | Must | Кривая проверка не ломает остальные; результат не зависит от порядка вызова |
-| F12 | Фикстуры + JUnit: golden-тесты движка, тесты утилит, ArchUnit-запрет инфраструктурных зависимостей | Must | `mvn test` зелёный, CI на каждый PR |
-| F13 | Hot reload `scoring.yaml` (атомарная подмена конфига) | Should | Меняем порог на диске — следующие оценки используют новое значение без рестарта |
-| F14 | Пакетная оценка (`scoreBatch`) для топ-N trending | Should | Один проход, нет пересоздания конфига на каждый репозиторий |
+| F1 | Доменная модель (`RepoRef`, `GhEvent`, `RepoStats`, `RepoSnapshot`, `RepoScore`) | Must | Модели неизменяемы, лежат отдельно от DTO API |
+| F2 | Клиент GH Archive: скачивание часовых дампов, streaming-парсинг, фильтр по репозиторию | Must | На реальном репозитории возвращает события за окно; malformed-строки не роняют запрос |
+| F3 | Агрегация статистики по репозиторию | Must | Счётчики и динамика сходятся с ручной проверкой на фикстуре |
+| F4 | Сервис отчёта: статистика + snapshot для scoring | Must | Оркестрирует клиент, агрегатор и движок; контроллер остаётся тонким |
+| F5 | Мок-проверки C1–C5 + настоящий `ScoringEngine` | Must | Score/level/explain считаются движком по весам из `CHECKS.md`; в ответе видно `mocked: true` |
+| F6 | REST-контроллер по репозиторию | Must | `GET /api/v1/repos/{owner}/{name}` с валидацией, кодами ошибок и snake_case JSON |
+| F7 | OpenAPI + Swagger UI | Must | `/swagger-ui.html` открывается, запрос отправляется, схемы и примеры заполнены |
+| F8 | Офлайн-режим на фикстурах | Must | `app.archive.mode=fixture` поднимает сервис без сети; используется в тестах и как fallback на демо |
+| F9 | Кэш скачанных часов | Should | Повторный запрос по тому же репозиторию не перекачивает файлы (TTL) |
+| F10 | Тесты: парсер, клиент (WireMock), агрегатор, движок, контроллер, `/v3/api-docs` | Must | `mvn test` зелёный без доступа к сети |
+| F11 | README модуля: запуск, запросы, ограничения PoC | Must | По README сервис поднимается с чистой машины |
 
-**Stretch (не входит в v1):** MinHash/LSH для C4, перцентильная калибровка C3,
-обогащение C2 через GitHub REST, история score, алерты — всё это живёт в
-сервисных модулях, не в core.
+**Stretch (только если PoC готов раньше):** скачивание часов параллельно
+(если не попадёт в F2 сразу), экспорт `docs/openapi.yaml` в файл, простой
+HTML за пределами Swagger.
 
 ---
 
-## 3. Архитектура
+## 3. Ключевое уточнение: как устроен GH Archive
 
-### 3.1. Место в монорепо
+GH Archive **не имеет query API** — это публичные почасовые дампы всех событий
+GitHub в формате NDJSON, сжатые gzip:
 
-```text
-star-guard/
-├── core/                  # этот модуль: домен + проверки + движок (без I/O)
-├── ingestion/             # producer GH Archive → Kafka
-├── aggregation/           # Kafka Streams: окна, trending
-├── storage-scoring/       # Redis: агрегаты, RepoSnapshotAssembler, кэш score
-├── api/                   # REST/SSE, OpenAPI-маппинг RepoScore
-├── ui/                    # минимальная страница
-├── infra/                 # compose, Grafana
-└── docs/
-    ├── core-plan.md       # этот документ
-    ├── event-schema.md    # контракт события (день 1)
-    └── openapi.yaml       # контракт API (день 1)
+```
+https://data.gharchive.org/2026-11-10-6.json.gz
 ```
 
-Артефакт: `ru.itmo.ipkn.starguard:core:0.1.0-SNAPSHOT`.
-Зависимости: `api` → `core` (напрямую для DTO), `storage-scoring` → `core`,
-`aggregation` → `core` (только `GhEvent`).
+Поэтому «клиент, который отправляет запрос в GH Archive» — это HTTP-клиент,
+который:
 
-### 3.2. Пакеты
+1. по окну времени вычисляет список часовых файлов (UTC);
+2. скачивает каждый файл;
+3. **потоково** распаковывает (`GZIPInputStream`) и парсит построчно (Jackson);
+4. оставляет только события нужного репозитория (`repo.name`, без учёта регистра);
+5. отдаёт список `GhEvent` в сервис.
+
+Практические ограничения, которые закладываем в дизайн:
+
+- один часовой дамп — десятки–сотни тысяч событий и десятки–сотни МБ gzip;
+- дамп за час появляется с задержкой → окно заканчиваем на `now - lag-hours`
+  (по умолчанию 2 часа), а не «сейчас»;
+- файл за запрошенный час может отсутствовать (404) — пропускаем и фиксируем
+  в метаданных, а не падаем;
+- 24 часа — это гигабайты скачивания, поэтому дефолт — 6 часов,
+  максимум — 24 (настраивается);
+- результат фильтрации кэшируем per `(repo, hour)` — повторные запросы дешёвые.
+
+---
+
+## 4. Архитектура PoC
+
+Один Spring Boot модуль, слои по пакетам. Позже модуль безболезненно
+выделяется в multi-module, а источник данных заменяется на Redis.
 
 ```text
-ru.itmo.ipkn.starguard.core
-├── event      GhEvent — общая схема события (v1)
-├── domain     RepoSnapshot, StarActor, OverlapStats, OverlapRef, HourProfile
-├── check      RepoCheck, CheckResult, CheckIds
-├── checks     BurstCheck, FreshAccountsCheck, EngagementCheck,
-│              ActorOverlapCheck, CircadianCheck (+ params-записи каждого)
-├── engine     ScoringEngine, ScoringEngineImpl, RepoScore, CheckContribution,
-│              ScoreLevel, ScoreAssembler
-├── config     ScoringConfig, CheckConfig, CheckParams, ScoringConfigLoader,
-│              ScoringConfigHolder, ScoringConfigValidator, CoreConfiguration
-└── util       Norm, Series, Jaccard, ActorHasher
+                 ┌────────────────────────────────────────────┐
+ Swagger/HTTP    │  api: RepoController, ErrorHandler, DTO     │
+ ───────────────►│                                            │
+                 └───────────────────┬────────────────────────┘
+                                     ▼
+                 ┌────────────────────────────────────────────┐
+                 │  service: RepoReportService                │
+                 │  stats:   StatsAggregator                  │
+                 │  scoring: ScoringEngine + MockedChecks     │
+                 └───────┬───────────────────────┬────────────┘
+                         ▼                       ▼
+                 ┌───────────────┐       ┌──────────────────┐
+                 │ archive:      │       │ domain: модели   │
+                 │ GhArchiveClient│      │ snapshot/score    │
+                 └───────┬───────┘       └──────────────────┘
+                         ▼
+              data.gharchive.org (или classpath-фикстуры)
 ```
 
-Зависимости внутри модуля — только вниз: `checks → engine/domain/util`,
-`engine → domain/check/config`, `config` не зависит от `checks`.
-
-### 3.3. Ключевые решения
+### Ключевые решения
 
 | # | Решение | Обоснование |
 |---|---------|-------------|
-| AD-1 | Core — библиотека без I/O: никаких Kafka/Redis/HTTP-зависимостей | Проверки тестируются на фикстурах, ArchUnit охраняет границу |
-| AD-2 | `RepoCheck.evaluate(RepoSnapshot)` — **чистая функция** без обращения к внешним системам | Контракт из `CHECKS.md` сохраняется; любой snapshot можно воспроизвести в тесте |
-| AD-3 | Всё тяжёлое, что требует других репозиториев/Redis, **пре-агрегируется** в `RepoSnapshot` (`OverlapStats`, `List<StarActor>`, `globalHourShare7d`) | C2/C4/C5 остаются чистыми и дешёвыми; дорогие операции — в `storage-scoring` с кэшем и TTL |
-| AD-4 | Все числа — в `scoring.yaml`; в коде нет магических констант | Требование `TASKS.md`; калибровка в день 4 без пересборки |
-| AD-5 | Движок изолирует падения проверок и работает по одной неизменяемой конфигурации | Ошибка в C4 не должна ронять score; hot reload не должен давать «рваный» результат |
-| AD-6 | Окна и профили считаются по **event time** (`created_at`), а не по wall clock | Реплей x50–x100 сжимает реальное время — C1 и C5 иначе сломаются |
-| AD-7 | Explain — часть публичного контракта, а не debug-вывод | Демо и UI показывают разбор сигналов |
-
-### 3.4. Поток данных
-
-1. `aggregation` пишет агрегаты в Redis (ключи — в `PLAN.md`, день 1).
-2. `RepoSnapshotAssembler` (`storage-scoring`) собирает `RepoSnapshot`:
-   - локальные счётчики из `repo:{id}:stats`;
-   - ряд по минутам из `repo:{id}:minutes`;
-   - акторы и их свежесть из `repo:{id}:actors` + глобального индекса firstSeen;
-   - `OverlapStats` — раз в минуту по топ-500 (Redis `SINTERCARD`);
-   - глобальный часовой профиль `global:hours7d`;
-   - `dataCompleteness` и `missingData`.
-3. `ScoringEngine.score(snapshot)` → `RepoScore`.
-4. `api` маппит `RepoScore` в JSON и отдаёт в UI/SSE; `storage-scoring` кэширует
-   score с TTL (например, 60 с).
+| AD-1 | PoC — один модуль Spring Boot, без Kafka/Redis | Минимум инфраструктуры, быстрый вертикальный срез; позже раскладывается по модулям |
+| AD-2 | Проверки замоканы **за тем же интерфейсом** `RepoCheck`, движок — настоящий | Замена мока на реальный C1–C5 не меняет ни движок, ни API |
+| AD-3 | `RepoStats` (что показываем) и `RepoSnapshot` (что ест scoring) — разные модели | API-контракт не привязан к внутренним полям проверок; snapshot расширяется без ломки API |
+| AD-4 | Клиент — streaming-парсинг gzip, фильтрация до агрегации | Не держим в памяти целый часовой дамп (сотни тысяч событий) |
+| AD-5 | Окно — по event time (`created_at`), не по времени скачивания | Реплей/фикстуры и реальные дампы считаются одинаково |
+| AD-6 | `fixture`-режим с тем же интерфейсом клиента | Тесты без сети, надёжный fallback на демо |
+| AD-7 | OpenAPI генерируется springdoc из кода; JSON — snake_case | Документация всегда соответствует реализации, Swagger «Try it out» работает из коробки |
 
 ---
 
-## 4. Публичный Java API
-
-### 4.1. Доменная модель
+## 5. Доменная модель
 
 ```java
+public record RepoRef(String owner, String name) {
+    public String fullName() { return owner + "/" + name; }
+}
+
+public enum EventType { WATCH, FORK, PUSH, ISSUES, PULL_REQUEST, OTHER }
+
+/** Событие GH Archive, уже отфильтрованное по репозиторию. */
 public record GhEvent(
-        String eventId,          // идемпотентность ingestion
-        String type,             // WatchEvent, ForkEvent, PushEvent, IssuesEvent, ...
+        String eventId,          // payload.id, для дедупликации
+        EventType type,
         long repoId,
-        String repoFullName,     // "owner/name"
+        String repoFullName,
         long actorId,
-        Instant actorCreatedAt,  // nullable: не во всех payload GH Archive есть
-        Instant createdAt        // event time
+        String actorLogin,
+        Instant createdAt        // event time из payload.created_at
 ) {}
-```
 
-```java
-/** Полный снимок репозитория — единственный вход всех проверок. */
+/** Окно анализа: последние N полных часов UTC, заканчивая на now - lag. */
+public record TimeWindow(Instant from, Instant to, int hours) {}
+
+public record EventCounts(
+        int total,
+        int stars,
+        int forks,
+        int pushes,
+        int issues,
+        int pullRequests,
+        int other
+) {}
+
+/** Публичная статистика по репозиторию — то, что отдаём в API. */
+public record RepoStats(
+        RepoRef repo,
+        TimeWindow window,
+        EventCounts counts,
+        int uniqueActors,
+        int starActors,
+        int peakStars10m,               // максимум звёзд в любом 10-минутном окне
+        List<HourBucket> starsByHour    // для графика, ровно window.hours() точек
+) {}
+
+public record HourBucket(Instant hourStart, int stars) {}
+
+/**
+ * Вход движка scoring. В PoC заполняется тем, что реально можно посчитать
+ * из событий; недостающие блоки помечены в DataAvailability.
+ */
 public record RepoSnapshot(
-        String repoId,
-        String fullName,
+        RepoRef repo,
+        TimeWindow window,
         Instant capturedAt,
+        EventCounts counts,
+        int uniqueActors,
+        int starActors,
+        int[] starsByMinute,            // hours * 60, для будущих C1/C5
+        DataAvailability data
+) {}
 
-        int stars1h,
-        int stars24h,
-        int stars7d,
-        int[] starsByMinute,          // ровно 1440, старые → новые
-
-        int forks24h,
-        int issues24h,
-        int pulls24h,
-        int pushes24h,
-
-        int uniqueActors24h,
-        List<StarActor> actors24h,    // для C2; может быть усечён (см. actorSample)
-        OverlapStats overlap,         // для C4; null если ещё не посчитан
-
-        int[] hourHistogram7d,        // ровно 24, UTC
-        double[] globalHourShare7d,   // ровно 24, сумма ≈ 1
-
-        double dataCompleteness,      // 0..1
-        Set<String> missingData       // имена отсутствующих блоков
+public record DataAvailability(
+        boolean actorHistory,           // нет: GH Archive не содержит даты создания аккаунта
+        boolean crossRepoOverlap,       // нет: нужен глобальный индекс акторов
+        boolean globalHourProfile       // нет: нужен глобальный профиль за 7 дней
 ) {}
 ```
 
-```java
-/** Актор, поставивший звезду за 24 ч. Поля — вход C2. */
-public record StarActor(
-        String hash,                  // обезличенный id (ActorHasher)
-        Instant accountCreatedAt,     // nullable
-        Instant firstSeenInStream,    // nullable
-        boolean hasOtherActivity90d   // push/issue/PR за 90 дней
-) {}
+**Почему `RepoStats` и `RepoSnapshot` разделены:** статистика — контракт API
+(стабильный), snapshot — вход проверок (будет расширяться полями
+`actors24h`, `overlap`, `hourHistogram7d` из `CHECKS.md`). В PoC движок получает
+урезанный snapshot, но контракт `RepoCheck.evaluate(RepoSnapshot)` сохраняется.
 
-/** Предвычисленное пересечение с другими репозиториями — вход C4. */
-public record OverlapStats(
-        double jaccardMax,
-        List<OverlapRef> topOverlaps, // топ-3
-        double multiShare,
-        int actorsAnalyzed,
-        int candidatesCompared
-) {}
-
-public record OverlapRef(String repoId, String fullName, double jaccard) {}
-```
-
-**Правила валидации** (compact-конструкторы, ошибка — `IllegalArgumentException`):
-длины массивов, неотрицательность счётчиков, `0 <= dataCompleteness <= 1`,
-`fullName` в формате `owner/name`, массивы копируются при создании
-(иммутабельность и потокобезопасность).
-
-### 4.2. Контракт проверки
+### Scoring-модели (реальный движок, мок-проверки)
 
 ```java
 public interface RepoCheck {
-    String id();                          // CheckIds.BURST = "burst", ...
+    String id();                            // "burst", "fresh_accounts", ...
     CheckResult evaluate(RepoSnapshot snapshot);
 }
 
 public record CheckResult(
         String checkId,
-        double score,                     // 0..1 после нормализации
-        double confidence,                // 0..1 — полнота данных
-        Map<String, Object> details       // для explain; ограниченный набор, без PII
+        double score,                       // 0..1
+        double confidence,                  // 0..1
+        Map<String, Object> details
 ) {}
-```
-
-Требования к реализации проверки:
-
-- не мутирует snapshot и не хранит состояния между вызовами;
-- не бросает исключения наружу — движок их всё равно изолирует, но правило
-  «проверка сама не падает» проверяется тестами;
-- при нехватке данных возвращает низкий `confidence`, а не высокий score;
-- все пороги получает из своего `params`-record, а не из констант.
-
-```java
-public final class CheckIds {
-    public static final String BURST = "burst";
-    public static final String FRESH_ACCOUNTS = "fresh_accounts";
-    public static final String ENGAGEMENT = "engagement";
-    public static final String ACTOR_OVERLAP = "actor_overlap";
-    public static final String CIRCADIAN = "circadian";
-}
-```
-
-### 4.3. Движок
-
-```java
-public interface ScoringEngine {
-    RepoScore score(RepoSnapshot snapshot);
-    List<RepoScore> scoreBatch(List<RepoSnapshot> snapshots);   // Should (F14)
-}
 
 public record RepoScore(
-        String repoId,
-        String fullName,
-        int score,                        // 0..100
-        ScoreLevel level,
-        double confidence,                // 0..1 = min по активным проверкам
-        boolean insufficientData,         // нет ни одной активной проверки
+        int score,                          // 0..100
+        ScoreLevel level,                   // LOW/MEDIUM/HIGH/CRITICAL
+        double confidence,
+        boolean insufficientData,
         List<CheckContribution> checks,
-        Instant computedAt,
-        Map<String, Object> meta          // rulesApplied, warnings, configHash
+        boolean mocked,
+        Instant computedAt
 ) {}
 
 public record CheckContribution(
@@ -279,344 +230,372 @@ public record CheckContribution(
         double score,
         double confidence,
         double weight,
-        double contribution,              // 100 * w * score / W, 0 для неактивных
-        boolean active,
-        String error,                     // null, если проверка отработала
+        double contribution,
         Map<String, Object> details
 ) {}
 
 public enum ScoreLevel { LOW, MEDIUM, HIGH, CRITICAL }
 ```
 
-### 4.4. Конфигурация
+Алгоритм сборки — как в `CHECKS.md` §4 (веса 0.30/0.22/0.18/0.22/0.08,
+порог confidence 0.5, ренормировка по активным, два правила усиления, уровни
+0–29 / 30–59 / 60–84 / 85–100). Пороги и веса — в `application.yaml`.
+
+---
+
+## 6. Клиент GH Archive
 
 ```java
-public record ScoringConfig(
-        EngineConfig engine,
-        List<CheckConfig> checks,         // порядок = порядок в YAML
-        String configHash                 // SHA-256 содержимого файла
-) {}
-
-public record EngineConfig(
-        double minConfidence,             // 0.5 — порог активности проверки
-        AmplificationConfig amplification,
-        LevelThresholds levels
-) {}
-
-public record CheckConfig(String id, boolean enabled, double weight, Map<String, Object> params) {}
+public interface GhArchiveClient {
+    /** События репозитория за окно, в порядке возрастания created_at. */
+    List<GhEvent> fetchEvents(RepoRef repo, TimeWindow window);
+}
 ```
 
-Доступ к конфигу — через неизменяемый холдер с атомарной подменой:
+### Реализация `HttpGhArchiveClient`
+
+- URL: `{base-url}/{yyyy-MM-dd}-{H}.json.gz`, UTC (base-url по умолчанию
+  `https://data.gharchive.org`).
+- Для каждого часа окна: GET → `GZIPInputStream` → `BufferedReader` →
+  Jackson-парсинг строки; отображение `type`:
+  `WatchEvent → WATCH` (звёзды), `ForkEvent`, `PushEvent`, `IssuesEvent`,
+  `PullRequestEvent`, остальные — `OTHER` (для счётчика, в статистику не идут).
+- Фильтр сразу при парсинге: `repo.name` equalsIgnoreCase `owner/name`;
+  события без `repo`/`actor`/`created_at` пропускаются.
+- Malformed-строка → счётчик `parseErrors++`, событие пропускается
+  (не роняем весь запрос из-за одной битой строки).
+- HTTP-ошибки: 404 файла (ещё не опубликован) → час помечается `missing`;
+  прочие ошибки → retry (1 повтор с backoff), затем либо исключение
+  (`fail-fast=true`), либо пропуск часа с отметкой (`fail-fast=false`, default).
+- Параллельность: скачивание часов — в bounded executor
+  (`archive.parallelism`, default 4), каждый файл парсится потоково.
+- Кэш: `Caffeine` per `(repoFullName, hourStart)` — список отфильтрованных
+  событий, TTL 1 час, максимум 256 записей. Повторный запрос по тому же
+  репозиторию из кэша.
+- Таймауты: connect 5 s, read 30 s (настраиваются).
+
+### Реализация `FixtureGhArchiveClient`
+
+- Тот же интерфейс; читает `classpath:fixtures/gharchive/*.json.gz` (или `.jsonl`).
+- Используется в `@SpringBootTest`/`MockMvc`-тестах и на демо:
+  `app.archive.mode=fixture` — сервис работает без сети.
+- В репозиторий кладём компактную фикстуру реального репозитория
+  (200–500 событий за 2–3 часа), чтобы демонстрировать полный ответ.
+
+### Метаданные запроса
+
+Клиент возвращает не только события, но и служебную сводку — она нужна в ответе
+API и для отладки:
+
+```java
+public record ArchiveFetchResult(
+        List<GhEvent> events,
+        int hoursRequested,
+        int hoursLoaded,
+        List<Instant> missingHours,
+        int parseErrors,
+        boolean cached
+) {}
+```
+
+---
+
+## 7. Агрегация статистики
+
+`StatsAggregator` — чистая функция `List<GhEvent> + TimeWindow → RepoStats + RepoSnapshot`:
+
+- отбрасывает события вне окна и дубли по `eventId` (идемпотентность);
+- считает `EventCounts`: total, stars (WatchEvent), forks, pushes, issues,
+  pullRequests, other;
+- `uniqueActors` — уникальные `actorId` среди всех событий;
+  `starActors` — среди звёзд;
+- `starsByMinute[hours * 60]` — звёзды по минутам от начала окна;
+- `starsByHour[hours]` — те же данные для графика в API;
+- `peakStars10m` — максимум суммы в 10-минутном окне (простая демонстрация
+  будущей C1, но это **статистика**, а не проверка);
+- `RepoSnapshot` заполняет тем же + `DataAvailability(false, false, false)`.
+
+Крайние случаи: пустой список событий → контроллер отдаёт 404
+`REPO_NOT_FOUND_IN_WINDOW`; событие без `created_at`/`actor` — пропущено
+и посчитано в `parseErrors`; репозиторий переименован — сравниваем `repo.name`,
+при несовпадении будет пусто (оговорено в README).
+
+---
+
+## 8. Мок-проверки и движок
+
+Каждая проверка C1–C5 — отдельный Spring-бин, реализующий `RepoCheck`,
+но возвращающий заранее заданные значения:
 
 ```java
 @Component
-public final class ScoringConfigHolder {
-    public ScoringConfig current();
-    public <P extends CheckParams> P params(String checkId, Class<P> type); // кэш разбора
-    public void reload();               // Should (F13)
+public final class MockBurstCheck implements RepoCheck {
+    // id = "burst"; score/confidence/detail берутся из профиля mock-mode
 }
 ```
 
-Проверка берёт параметры на каждом вызове через холдер — это оставляет
-`evaluate(RepoSnapshot)` стабильным и заодно даёт hot reload.
+Профили моков (`app.scoring.mock-mode` или PoC-only query-параметр
+`mock_mode=healthy|borderline|suspicious`):
 
-### 4.5. Утилиты для владельцев проверок
+| Профиль | Назначение | Ожидаемый итог |
+|---------|------------|----------------|
+| `healthy` | «здоровый» репозиторий | score 5–20, level LOW |
+| `borderline` | «пограничный» | score 30–50, level MEDIUM |
+| `suspicious` | «накрутка» для демо | score 75–95, level HIGH/CRITICAL, сработает усиление |
 
-```java
-public final class Norm {
-    public static double clamp01(double x);
-    public static double normalize(double x, double floor, double span); // clamp01((x-floor)/span)
-}
-
-public final class Series {
-    public static long maxSlidingSum(int[] series, int window);
-    public static double median(int[] series);
-}
-
-public final class Jaccard {
-    public static double of(Set<String> a, Set<String> b);
-}
-
-public final class ActorHasher {
-    public static String hash(long actorId);  // SHA-256, первые 16 hex-символов
-}
-```
-
-### 4.6. Пример использования (сервисный слой)
-
-```java
-RepoSnapshot snapshot = snapshotAssembler.assemble("owner/repo");  // storage-scoring
-RepoScore score = scoringEngine.score(snapshot);                   // core
-String json = scoreMapper.toJson(score);                           // api
-```
-
-Spring-конфигурация подключается одним бином:
-
-```java
-@Configuration
-@Import(CoreConfiguration.class)   // даёт ScoringConfigHolder, ScoringEngine, все RepoCheck
-class StorageScoringConfig {}
-```
+В `details` каждой проверки — `{"mocked": true, "profile": "..."}`;
+в `RepoScore.mocked = true`. Движок настоящий: веса, confidence-гейт,
+ренормировка, усиления, explain (`contribution = 100 * w * score / W`).
 
 ---
 
-## 5. JSON-контракт explain
+## 9. REST API и OpenAPI
 
-Форма совпадает с примером из `CHECKS.md` §4 (снаке-кейс — ответственность `api`,
-core отдаёт camelCase-записи):
+### Эндпоинт
+
+| Метод | Путь | Параметры | Ответ |
+|-------|------|-----------|-------|
+| GET | `/api/v1/repos/{owner}/{name}` | `hours` (1–24, default из конфига), `mock_mode` (PoC-only) | `200 RepoReportResponse`, `400`, `404`, `502`, `503` |
+| GET | `/v3/api-docs` | — | OpenAPI 3 JSON (springdoc) |
+| GET | `/swagger-ui.html` | — | Swagger UI |
+
+Валидация `owner`/`name`: `^[A-Za-z0-9_.-]{1,100}$`; `hours` — диапазон;
+ошибки — RFC 9457 `ProblemDetail` с полем `code`.
+
+### Пример ответа
 
 ```json
 {
-  "repo_id": "123456",
-  "full_name": "owner/repo",
-  "score": 72,
-  "level": "high",
-  "confidence": 0.9,
-  "insufficient_data": false,
-  "computed_at": "2026-11-10T12:00:00Z",
-  "checks": [
-    {"id": "burst",          "score": 0.91, "confidence": 0.9, "weight": 0.30,
-     "contribution": 27.3, "active": true, "details": {"maxBurst10m": 42, "ratio": 21.0}},
-    {"id": "fresh_accounts", "score": 0.66, "confidence": 0.9, "weight": 0.22,
-     "contribution": 14.5, "active": true, "details": {"freshShare": 0.7}},
-    {"id": "engagement",     "score": 0.80, "confidence": 1.0, "weight": 0.18,
-     "contribution": 14.4, "active": true, "details": {"engagement": 0.04}},
-    {"id": "actor_overlap",  "score": 0.55, "confidence": 0.9, "weight": 0.22,
-     "contribution": 12.1, "active": true, "details": {"jaccardMax": 0.25}},
-    {"id": "circadian",      "score": 0.40, "confidence": 0.9, "weight": 0.08,
-     "contribution": 3.2,  "active": true, "details": {"kl": 0.78}}
-  ],
-  "meta": {"rules_applied": ["strong_check"], "warnings": [], "config_hash": "ab12…"}
+  "repo": {"owner": "spring-projects", "name": "spring-boot"},
+  "window": {"from": "2026-11-10T02:00:00Z", "to": "2026-11-10T08:00:00Z", "hours": 6},
+  "stats": {
+    "total_events": 4231,
+    "stars": 142,
+    "forks": 21,
+    "pushes": 3110,
+    "issues": 233,
+    "pull_requests": 725,
+    "other": 0,
+    "unique_actors": 611,
+    "star_actors": 138,
+    "peak_stars_10m": 9,
+    "stars_by_hour": [
+      {"hour": "2026-11-10T02:00:00Z", "stars": 18},
+      {"hour": "2026-11-10T03:00:00Z", "stars": 24}
+    ]
+  },
+  "score": {
+    "score": 10,
+    "level": "low",
+    "confidence": 0.9,
+    "insufficient_data": false,
+    "mocked": true,
+    "checks": [
+      {"id": "burst", "score": 0.10, "confidence": 0.9, "weight": 0.30,
+       "contribution": 3.0, "details": {"mocked": true}},
+      {"id": "fresh_accounts", "score": 0.10, "confidence": 0.9, "weight": 0.22,
+       "contribution": 2.2, "details": {"mocked": true}},
+      {"id": "engagement", "score": 0.15, "confidence": 0.9, "weight": 0.18,
+       "contribution": 2.7, "details": {"mocked": true}},
+      {"id": "actor_overlap", "score": 0.05, "confidence": 0.9, "weight": 0.22,
+       "contribution": 1.1, "details": {"mocked": true}},
+      {"id": "circadian", "score": 0.10, "confidence": 0.9, "weight": 0.08,
+       "contribution": 0.8, "details": {"mocked": true}}
+    ]
+  },
+  "archive": {
+    "hours_requested": 6,
+    "hours_loaded": 6,
+    "missing_hours": [],
+    "parse_errors": 0,
+    "cached": false
+  }
 }
 ```
 
-HTTP-маппинг и OpenAPI — зона Dev 4: `GET /api/v1/repos/{owner}/{name}/score`
-отдаёт `RepoScore` целиком; в элементах `/trending` достаточно
-`score`, `level`, `confidence`.
+### Swagger
+
+- `springdoc-openapi-starter-webmvc-ui`; аннотации `@Operation`, `@Parameter`,
+  `@ApiResponse`, `@Schema(example = ...)` на DTO.
+- `OpenApiConfig`: `info.title = Star Guard Core PoC`, версия `0.1.0`,
+  тег «repos», сервер `http://localhost:8080`.
+- «Try it out» в Swagger ходит в реальный GH Archive (или в fixture-режиме).
+- Контроль контракта: тест `GET /v3/api-docs` — 200 и наличие пути; опционально
+  экспорт `docs/openapi.yaml` при сборке, чтобы диффить контракт в PR.
 
 ---
 
-## 6. `RepoSnapshot`: поля, источники и потребители
+## 10. Структура проекта и стек
 
-| Поле | Источник (storage-scoring) | Нужно проверке |
-|------|----------------------------|----------------|
-| `stars1h/24h/7d` | окна Streams в Redis | C1, C3, C5 |
-| `starsByMinute[1440]` | минутный ряд за 24 ч | C1 |
-| `forks24h/ issues24h/ pulls24h/ pushes24h` | счётчики окна 24 ч | C3 |
-| `uniqueActors24h`, `actors24h[]` | set акторов + firstSeen-индекс + история активности 90 д | C2 |
-| `overlap` | раз в минуту: `SINTERCARD` по топ-500 + multi-repo индекс | C4 |
-| `hourHistogram7d[24]`, `globalHourShare7d[24]` | часовые агрегаты за 7 д | C5 |
-| `dataCompleteness`, `missingData` | оценка assembler’а | все (confidence, UI) |
-
-Ограничения, которые фиксируем в контракте:
-
-- `actors24h` может быть усечён до `actorSampleLimit` (например, 5000) —
-  `OverlapStats.actorsAnalyzed` и `uniqueActors24h` позволяют проверке понять
-  полную выборку;
-- `overlap == null` — C4 обязан вернуть `confidence = 0` и не падать;
-- `actorCreatedAt` и `firstSeenInStream` — nullable, C2 использует fallback
-  из `TASKS.md` §2.
-
----
-
-## 7. `scoring.yaml`
-
-Единый файл на модуль; путь задаётся свойством
-`star-guard.core.scoring-config` (default: `classpath:scoring.yaml`, в compose —
-volume). Веса и пороги — из `TASKS.md`, без изменений.
-
-```yaml
-engine:
-  min_confidence: 0.5
-  amplification:
-    multi_trigger: {min_checks: 2, check_score_at_least: 0.7, floor: 60}
-    strong_check:
-      check_ids: [burst, fresh_accounts, actor_overlap]
-      check_score_at_least: 0.85
-      min_confidence: 0.7
-      floor: 70
-  levels: {medium: 30, high: 60, critical: 85}
-
-checks:
-  burst:
-    enabled: true
-    weight: 0.30
-    ratio_floor: 3.0
-    ratio_span: 12.0
-    min_burst: 10
-    warmup_minutes: 60
-  fresh_accounts:
-    enabled: true
-    weight: 0.22
-    new_account_days: 30
-    empty_actor_days: 90
-    share_floor: 0.3
-    share_span: 0.6
-    min_actors: 10
-  engagement:
-    enabled: true
-    weight: 0.18
-    engagement_floor: 0.2
-    min_stars: 20
-  actor_overlap:
-    enabled: true
-    weight: 0.22
-    candidate_pool: 500
-    jaccard_floor: 0.05
-    jaccard_span: 0.45
-    multi_repo_threshold: 3
-    multi_floor: 0.1
-    multi_span: 0.4
-    min_actors: 10
-  circadian:
-    enabled: true
-    weight: 0.08
-    window_days: 7
-    kl_floor: 0.3
-    kl_span: 1.2
-    min_stars: 50
-```
-
-**Валидация на старте (fail-fast, `ScoringConfigException`):**
-
-- каждому `CheckConfig.id` соответствует ровно один зарегистрированный `RepoCheck`;
-- веса включённых проверок в `(0, 1]`, сумма всех `weight` ≈ 1.0 (±1e-6);
-- `params` каждого check разбираются в свой record (Jackson) и проходят
-  `CheckParams.validate()`: диапазоны (например, `ratio_span > 0`), обязательные поля;
-- неизвестные ключи в YAML — ошибка (опечатка в пороге не должна молча игнорироваться);
-- уровни строго возрастают: `medium < high < critical`;
-- дубли id, `null`/NaN — ошибка.
-
-`configHash` (SHA-256 файла) попадает в `RepoScore.meta` — по нему на демо
-видно, какой конфигурацией посчитан score.
-
----
-
-## 8. Алгоритм сборки score (реализация `CHECKS.md` §4)
+Один Maven-модуль в корне репозитория (artifactId `star-guard-core`);
+выделение multi-module — после PoC.
 
 ```text
-1. enabled = checks, где config.enabled == true
-2. для каждой проверки в порядке YAML:
-     try  → CheckResult (обязательно checkId == id; clamp score/confidence в 0..1)
-     catch → CheckContribution{active=false, error=…}, метрика failures++, warning
-3. active = результаты с confidence >= engine.min_confidence (и без ошибки)
-4. если active пуст:
-     RepoScore{score=0, level=LOW, confidence=0, insufficientData=true}
-5. W     = Σ weight_i по active                     // отключённые выпадают, веса ренормируются
-   raw   = Σ weight_i * score_i / W
-   score = round(100 * raw), clamp 0..100
-6. правила усиления (только повышают, meta.rulesApplied):
-     multi_trigger: count(score_i >= 0.7 по active) >= 2            → score = max(score, 60)
-     strong_check:  ∃ i ∈ check_ids: score_i >= 0.85 и conf_i >= 0.7 → score = max(score, 70)
-7. contribution_i = 100 * weight_i * score_i / W (1 знак после запятой при маппинге)
-8. confidence = min(confidence_i по active)
-9. level по порогам из конфига
+star-guard/
+├── pom.xml
+├── mvnw / mvnw.cmd
+├── src/main/java/ru/itmo/ipkn/starguard/core/
+│   ├── StarGuardCoreApplication.java
+│   ├── domain/       RepoRef, GhEvent, RepoStats, RepoSnapshot, RepoScore, ...
+│   ├── archive/      GhArchiveClient, HttpGhArchiveClient, FixtureGhArchiveClient,
+│   │                 GhArchiveParser, ArchiveProperties, ArchiveFetchResult
+│   ├── stats/        StatsAggregator
+│   ├── service/      RepoReportService
+│   ├── scoring/      RepoCheck, CheckResult, ScoringEngine, MockedChecks, CheckIds
+│   ├── api/          RepoController, RepoReportResponse, dto/, ErrorHandler
+│   └── config/       AppProperties, OpenApiConfig
+├── src/main/resources/application.yaml
+├── src/test/java/…
+├── src/test/resources/fixtures/…
+└── docs/
+    ├── core-plan.md            # этот документ
+    └── openapi.yaml            # (опционально) экспорт контракта
 ```
 
-Крайние случаи, закреплённые тестами:
-
-- проверка вернула `null` или исключение → неактивна, warning в `meta`;
-- `NaN`/`Infinity` в score/confidence → считаем 0;
-- проверка вернула чужой `checkId` → `IllegalStateException` на старте (тест
-  контракта), в рантайме — отбрасывается;
-- отключённая проверка не вызывается вовсе;
-- одинаковый snapshot дважды → одинаковый `RepoScore` (кроме `computedAt`);
-- score считается детерминированно при параллельных вызовах (stateless).
+**Стек:** Java 21, Spring Boot 3.5.x (web, validation, actuator),
+springdoc-openapi 2.8.x, Jackson, Caffeine (кэш), Maven Wrapper.
+**Тесты:** JUnit 5, AssertJ, MockMvc, WireMock (HTTP), springdoc `/v3/api-docs`.
+Lombok не используем — records и явные конструкторы.
 
 ---
 
-## 9. Надёжность и производительность
+## 11. Конфигурация (`application.yaml`)
 
-- **Stateless.** Движок и проверки не хранят состояния; конфиг — immutable,
-  подменяется атомарно. Один экземпляр безопасен для REST и Streams одновременно.
-- **Стоимость.** C1 — O(1440); C2 — O(actors); C3 — O(1); C4 — O(1) по
-  предвычисленному `OverlapStats`; C5 — O(24). Цель — < 1 мс на snapshot.
-- **Нет внешних вызовов в проверках** — значит, нет таймаутов и висящих потоков.
-  Всё сетевое (GitHub enrichment) — в сервисном слое, до сборки snapshot.
-- **Память.** Массивы копируются на границе записей; `details` ограничен
-  несколькими полями (топ-3 пересечения, пиковые часы), без списков акторов.
-- **Метрики (Micrometer):**
-  `starguard.scoring.duration{id}` (timer), `starguard.scoring.check.failures{id}`
-  (counter), `starguard.scoring.insufficient_data` (counter).
-- **Приватность.** В `details` — только `ActorHasher.hash`, не логины.
+```yaml
+server:
+  port: 8080
+
+spring:
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  archive:
+    base-url: https://data.gharchive.org
+    mode: http                # http | fixture
+    default-window-hours: 6
+    max-window-hours: 24
+    lag-hours: 2              # GH Archive публикует дампы с задержкой
+    parallelism: 4
+    connect-timeout: 5s
+    read-timeout: 30s
+    retries: 1
+    fail-fast: false          # пропускать недоступные часы, отмечая их в ответе
+    cache-ttl: 1h
+  scoring:
+    mock-mode: healthy        # healthy | borderline | suspicious
+    min-confidence: 0.5
+    weights:
+      burst: 0.30
+      fresh_accounts: 0.22
+      engagement: 0.18
+      actor_overlap: 0.22
+      circadian: 0.08
+```
+
+Секреты и внешние URL — только через конфиг; пользовательский ввод в URL
+не подставляется (защита от SSRF: base-url фиксирован).
 
 ---
 
-## 10. Тестирование
+## 12. Тестирование
 
 | Уровень | Что проверяем |
 |---------|----------------|
-| Утилиты | `Norm`, `Series.maxSlidingSum/median`, `Jaccard` — границы, пустые массивы, NaN |
-| Проверки | Фикстуры из `TASKS.md` (по 2–3 на проверку) + краевые: мало данных, `overlap == null`, нули |
-| Движок | Golden-тесты: эталонный snapshot (пример из `CHECKS.md` §4) → score 72, level high; ренормировка при отключённой проверке; усиления; изоляция исключений; детерминизм |
-| Конфиг | Валидация битого YAML, несовпадение id, неизвестные поля, ренормировка весов; загрузка **реального** `scoring.yaml` в CI |
-| Архитектура | ArchUnit: `core` не зависит от `kafka`, `redis`, `spring-web`, JDBC |
-| Контракт | JSON-снапшот `RepoScore` (explain) — ловит случайные изменения публичного API |
+| Парсер | Строка GH Archive → `GhEvent`; неизвестный тип → `OTHER`; битая строка → пропуск + счётчик |
+| Клиент | WireMock отдаёт 2 gzip-файла: фильтрация по репозиторию, порядок событий, 404 часа, retry, кэш |
+| Фикстуры | `FixtureGhArchiveClient` отдаёт те же события, что HTTP-клиент на тех же файлах |
+| Агрегатор | Эталонная фикстура → точные `EventCounts`, `uniqueActors`, `starsByHour`, `peakStars10m`; дубли и события вне окна |
+| Движок | Все три профиля моков дают ожидаемые уровни; explain: сумма contribution = score (с точностью округления) |
+| Контроллер | `MockMvc`: 200 по фикстуре, 400 на плохой owner/hours, 404 на репозиторий без событий, 502/503 при недоступном архиве |
+| OpenAPI | `/v3/api-docs` 200, путь `/api/v1/repos/{owner}/{name}` и схемы присутствуют |
 
-Фикстуры — JSON-файлы в `core/src/test/resources/fixtures/` + загрузчик
-`SnapshotFixtures.load("burst_spike.json")`, чтобы фикстуры были читаемы и
-переиспользуемы владельцами проверок.
-
-**Definition of Done для core v1:**
-
-- [ ] контракт (`domain`, `check`, `engine`) смержен и зафиксирован в `docs/core-api.md`;
-- [ ] 5 проверок зарегистрированы как бины, тесты зелёные;
-- [ ] движок выдаёт score/level/confidence/explain по алгоритму §8;
-- [ ] `scoring.yaml` валидируется, реальный файл грузится в тесте;
-- [ ] ArchUnit и JSON-снапшот зелёные;
-- [ ] метрики видны в Grafana;
-- [ ] README модуля: как подключить core и добавить новую проверку.
+Все тесты работают офлайн (`fixture`-режим + WireMock), CI не ходит в GH Archive.
 
 ---
 
-## 11. План работ по дням
+## 13. Итерации и Definition of Done
 
-Соответствует `PLAN.md`; core не блокирует остальные зоны после дня 1.
+| Итерация | Содержание | Оценка |
+|----------|------------|--------|
+| **0. Согласование** | Ревью этого плана, фиксация вопросов из §16 | 0.5–1 ч |
+| **1. Скелет + домен** | `pom.xml`, Boot-приложение, доменные records, `application.yaml`, `OpenApiConfig` | 2–3 ч |
+| **2. Клиент архива** | `HttpGhArchiveClient`, парсер, окно/лаг, кэш, `FixtureGhArchiveClient` + фикстура, unit-тесты | 3–4 ч |
+| **3. Статистика + scoring** | `StatsAggregator`, `RepoReportService`, мок-проверки, движок, тесты | 2–3 ч |
+| **4. REST + Swagger** | Контроллер, DTO, ошибки, валидация, springdoc, MockMvc-тесты | 2–3 ч |
+| **5. Демо** | Прогон на реальном репозитории, fixture-fallback, README, скриншот Swagger | 1–2 ч |
 
-| День | Что делаем | Артефакт |
-|------|-----------|----------|
-| **День 1, утро** | Ревью этого плана, фиксация контракта, каркас модуля `core`, `domain` + `check` + `engine`-сигнатуры, `scoring.yaml` с весами | PR с контрактом в `main` до обеда; все пишут против него |
-| **День 1, вечер** | `ScoringConfigLoader/Holder/Validator`, заглушка движка, `CoreConfiguration`, фикстуры-загрузчик | Pipeline из `PLAN.md` компилируется с реальным core |
-| **День 2** | `ScoringEngineImpl` v1 (веса, гейты, уровни), утилиты, скелеты C1–C5 у владельцев, golden-фикстуры | Движок считает score на фикстурах; каждая проверка демонстрируется на «плохой/здоровой» фикстуре |
-| **День 3** | C1–C5 на реальных данных, explain + усиления финально, метрики, совместная калибровка порогов | Score с разбором отдаётся через сервис; пороги откалиброваны |
-| **День 4** | Feature freeze: только калибровка весов, багфиксы, README/`docs/core-api.md` | Стабильный контракт, демо-примеры «накрученный vs здоровый» |
+Итого ~1,5–2 рабочих дня. **DoD PoC:**
+
+- [ ] `./mvnw spring-boot:run` поднимает сервис, `/swagger-ui.html` открывается;
+- [ ] запрос по реальному репозиторию отдаёт статистику и score с explain;
+- [ ] `mock_mode=suspicious` меняет уровень на HIGH/CRITICAL без перезапуска;
+- [ ] `mode=fixture` работает без сети;
+- [ ] `./mvnw test` зелёный офлайн;
+- [ ] README: запуск, примеры запросов, известные ограничения PoC;
+- [ ] в ответе честно видны `mocked: true` и `parse_errors`/`missing_hours`.
 
 ---
 
-## 12. Риски и запасные варианты
+## 14. Путь к MVP (как PoC встраивается в общий план команды)
+
+PoC сознательно повторяет будущие границы слоёв:
+
+1. **Данные.** `GhArchiveClient` в MVP заменяется на `RepoSnapshotProvider`,
+   который читает агрегаты из Redis (Kafka Streams). `RepoStats` при этом
+   собирается из тех же агрегатов. API и движок не меняются.
+2. **Проверки.** Каждый мок-Cx заменяется реальной реализацией `RepoCheck`
+   по `TASKS.md`; движок, веса и explain уже готовы.
+3. **Snapshot.** В `RepoSnapshot` добавляются `actors24h`, `overlap`,
+   `hourHistogram7d`, `globalHourShare7d`; `DataAvailability` станет
+   вычисляемым, а не константным.
+4. **API.** Контракт `RepoReportResponse` остаётся; добавляются trending и SSE.
+5. **Инфраструктура.** Docker Compose, Kafka, Redis, Grafana — отдельными
+   шагами по `PLAN.md`.
+
+---
+
+## 15. Риски PoC
 
 | Риск | Решение |
 |------|---------|
-| Владельцы проверок ждут контракт | Контракт фиксируется до обеда дня 1; этот план — предмет ревью утром; дальше — только совместимые изменения через PR |
-| Нет `actor_created_at` в payload | Прокси из `TASKS.md` §2: firstSeen в потоке + отсутствие активности 90 д; проверяем на реальном дампе в день 1 |
-| C4 дорогой | Тяжёлая часть — в `storage-scoring` (топ-500, раз в минуту, `SINTERCARD`); core видит только `OverlapStats` |
-| Реплей x100 ломает окна | Все окна и профили — по `created_at` (event time), это зафиксировано в AD-6 |
-| Веса «поехали» после отключения проверки | Движок ренормирует по активным весам; тест на golden-снапшоте |
-| Пороги разъезжаются с документацией | Типизированные params + валидация + CI-тест загрузки реального `scoring.yaml` |
-| Hot reload даёт «рваный» score | Снапшот конфига immutable, подмена атомарная; score всегда считается одной версией конфига (hash в meta) |
-| Фикстуры устаревают | Golden-тесты в CI на каждый PR, владелец проверки отвечает за свои фикстуры |
+| Часовой дамп большой, скачивание медленное | Streaming-парсинг, default 6 ч, лимит 24 ч, параллельность 4, кэш по часам |
+| Последний час ещё не опубликован | `lag-hours: 2`, 404 → `missing_hours`, не ошибка |
+| GH Archive недоступен на демо | `mode=fixture` + закоммиченная фикстура, заранее прогреть кэш реальным запросом |
+| Выбранный репозиторий неактивен в окне | 404 с понятным `code`; в README — как выбрать активный репозиторий |
+| В GH Archive нет даты создания аккаунта | Честный `DataAvailability.actorHistory=false`; C2 реально посчитать пока нельзя — она мокается, как и оговорено |
+| Мок-скор примут за настоящий | Явные `mocked: true`, `details.mocked`, дисклеймер в Swagger-описании и README |
+| Битые строки в дампе | Пропуск + `parse_errors`, запрос не падает |
 
 ---
 
-## 13. Открытые вопросы к команде
+## 16. Вопросы к согласованию (до начала разработки)
 
-1. **groupId/package**: предлагаю `ru.itmo.ipkn.starguard` — подтвердить до создания модуля.
-2. **Поставщики предвычисленных блоков**: кто и с какой частотой пишет
-   `OverlapStats` (Dev 4) и `globalHourShare7d` (Dev 2/Dev 3) — нужно согласовать
-   в день 1 вместе с ключами Redis.
-3. **Кэш score**: TTL и место хранения — `storage-scoring` (Dev 3), в core не входит.
-4. **Hot reload**: нужен ли на демо (F13) или достаточно рестарта — влияет на приоритет Should.
-5. **Actor hash**: длина/соль для `ActorHasher`; достаточно ли первых 16 hex-символов SHA-256.
-6. **Actor sample limit** для `actors24h` (5000?) — согласовать с C2/C4 и объёмом памяти на топ-репозиториях.
+1. **Форма эндпоинта**: один `GET /api/v1/repos/{owner}/{name}` со статистикой
+   и score в одном ответе — ок? Или разделить на `/stats` и `/score`?
+2. **Окно по умолчанию**: 6 часов, максимум 24, лаг 2 часа — принимаем?
+   (24 часа = несколько ГБ скачивания.)
+3. **Переключение моков**: PoC-only query-параметр `mock_mode` для демо
+   (рекомендую) или только конфиг + перезапуск?
+4. **Какие события** в статистику: Watch, Fork, Push, Issues, PullRequest
+   (остальные в `other`) — достаточно?
+5. **Фикстуры**: коммитим компактную фикстуру реального репозитория для
+   офлайн-демо — согласны?
+6. **Координаты проекта**: `ru.itmo.ipkn.starguard.core`, артефакт
+   `star-guard-core`, Java 21 + Spring Boot 3.5.x — ок?
+7. **Формат JSON**: snake_case (как в примерах `CHECKS.md`) для всех ответов —
+   подтверждаем?
 
 ---
 
-## 14. Политика изменения контракта
+## 17. Политика изменения API
 
-- `domain`, `check`, `engine` — **стабильный публичный API** после дня 1.
-- Изменение подписи/полей — только PR с ревью владельца контракта (Dev 3) и
-  сообщением в общий чат; ломающее изменение — синхронно со всеми владельцами проверок.
-- Добавление новой проверки не меняет контракт: новый `RepoCheck`-бин +
-  секция в `scoring.yaml` + фикстуры.
-- `details` каждой проверки — её зона ответственности; форма фиксируется в
-  `docs/core-api.md` по мере готовности проверок.
+- `RepoReportResponse` и `RepoScore` — публичный контракт PoC: меняются только
+  с обновлением OpenAPI и теста `/v3/api-docs`.
+- `RepoCheck` / `CheckResult` / движок — контракт из `CHECKS.md`; моки и будущие
+  реальные проверки реализуют его без изменений.
+- Новая проверка = новый бин + вес в конфиге + фикстура, без правок движка.

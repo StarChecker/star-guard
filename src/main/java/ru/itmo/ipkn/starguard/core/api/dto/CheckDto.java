@@ -1,0 +1,18 @@
+package ru.itmo.ipkn.starguard.core.api.dto;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+
+import java.util.Map;
+
+@Schema(description = "Результат одной проверки и её вклад в итоговый score")
+public record CheckDto(
+        @Schema(example = "burst") String id,
+        double score,
+        double confidence,
+        double weight,
+        double contribution,
+        boolean active,
+        String error,
+        Map<String, Object> details
+) {
+}

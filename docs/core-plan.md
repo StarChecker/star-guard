@@ -1,6 +1,7 @@
 # Star Guard — план core PoC (v1)
 
-> Статус: черновик на согласование · Ветка: `feature/core`
+> Статус: PoC реализован в ветке `feature/core`; версии ниже зафиксированы в `pom.xml`
+> (проверено тестами на JDK 25 и smoke-запуском с Swagger)
 >
 > Основа: командные документы `README.md`, `PLAN.md`, `TASKS.md`, `CHECKS.md`.
 > Этот документ заменяет предыдущую редакцию плана: **сначала делаем PoC-срез,
@@ -480,24 +481,24 @@ star-guard/
 
 ### 10.1. Библиотеки и версии
 
-Целевая связка: **Java 25 (LTS) + Spring Boot 4.0.x + Spring Cloud 2025.1.x
-(OpenFeign) + springdoc 3.x**. Точные patch-версии фиксируются в `pom.xml`
-на итерации 0 (см. §10.3) — ниже целевые ветки, а не «последнее, что было».
+Фактически зафиксированная связка: **Java 25 (LTS) + Spring Boot 4.0.6 +
+Spring Cloud 2025.1.0 (OpenFeign 5.0.0 / Feign 13.6) + springdoc 3.2.0**.
+Версии проверены `dependency:tree`, тестами и smoke-запуском на JDK 25.
 
 | Компонент | Артефакт | Версия | Зачем в PoC |
 |-----------|----------|--------|-------------|
 | Java | toolchain / runtime | **25 (LTS)** | требование команды |
-| Spring Boot | `spring-boot-starter-parent` (BOM) | **4.0.x** | поколение, поддерживающее Java 25; управляет версиями Spring/Jackson/тестов |
+| Spring Boot | `spring-boot-starter-parent` (BOM) | **4.0.6** | поколение, поддерживающее Java 25; управляет версиями Spring/Jackson/тестов |
 | Spring Web MVC | `spring-boot-starter-webmvc`¹ | из Boot BOM | REST-контроллер, `ProblemDetail`, валидация запросов |
 | Bean Validation | `spring-boot-starter-validation` | из Boot BOM | `@Valid`, `@Pattern` на owner/name/hours |
-| Spring Cloud OpenFeign | `spring-cloud-starter-openfeign` | из Spring Cloud BOM | декларативный клиент GH Archive |
-| HTTP-движок Feign | `io.github.openfeign:feign-hc5` | из Spring Cloud BOM | streaming-загрузка gzip + управляемые таймауты |
-| OpenAPI / Swagger UI | `org.springdoc:springdoc-openapi-starter-webmvc-ui` | **3.x** | `/v3/api-docs`, `/swagger-ui.html` |
+| Spring Cloud OpenFeign | `spring-cloud-starter-openfeign` | **2025.1.0** (из Cloud BOM) | декларативный клиент GH Archive |
+| HTTP-движок Feign | `io.github.openfeign:feign-hc5` | 13.6 (из Cloud BOM) | streaming-загрузка gzip + управляемые таймауты |
+| OpenAPI / Swagger UI | `org.springdoc:springdoc-openapi-starter-webmvc-ui` | **3.2.0** | `/v3/api-docs`, `/swagger-ui.html` |
 | JSON (NDJSON-парсер) | Jackson 3 (`tools.jackson.*`) | из Boot BOM | построчный парсинг дампов |
 | Кэш часовых выборок | `com.github.ben-manes.caffeine:caffeine` | из Boot BOM | per-`(repo, hour)` кэш с TTL |
 | Health/metrics | `spring-boot-starter-actuator` | из Boot BOM | `/actuator/health` для демо и проверок |
 | Тесты | `spring-boot-starter-test` | из Boot BOM | JUnit, AssertJ, Mockito, MockMvc |
-| HTTP-моки в тестах | `org.wiremock:wiremock-standalone` | 3.x (явно) | отдача gzip-файлов без сети |
+| HTTP-моки в тестах | `org.wiremock:wiremock-standalone` | **3.13.2** | отдача gzip-файлов без сети |
 | Сборка | Maven Wrapper (`mvnw`) | 3.9.x | воспроизводимая сборка с чистой машины |
 
 ¹ В Spring Boot 4 Spring MVC вынесен в отдельные стартеры — точное имя
@@ -520,7 +521,7 @@ star-guard/
 <parent>
   <groupId>org.springframework.boot</groupId>
   <artifactId>spring-boot-starter-parent</artifactId>
-  <version>4.0.x</version>              <!-- patch фиксируем на итерации 0 -->
+  <version>4.0.6</version>
 </parent>
 
 <dependencyManagement>
@@ -528,7 +529,7 @@ star-guard/
     <dependency>
       <groupId>org.springframework.cloud</groupId>
       <artifactId>spring-cloud-dependencies</artifactId>
-      <version>2025.1.x</version>       <!-- release train для Boot 4.0 -->
+      <version>2025.1.0</version>       <!-- release train для Boot 4.0 -->
       <type>pom</type>
       <scope>import</scope>
     </dependency>
@@ -559,7 +560,7 @@ star-guard/
 <dependency>
   <groupId>org.springdoc</groupId>
   <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-  <version>3.x</version>
+  <version>3.2.0</version>
 </dependency>
 <dependency>
   <groupId>com.github.ben-manes.caffeine</groupId>
@@ -577,7 +578,7 @@ star-guard/
 <dependency>
   <groupId>org.wiremock</groupId>
   <artifactId>wiremock-standalone</artifactId>
-  <version>3.x</version>
+  <version>3.13.2</version>
   <scope>test</scope>
 </dependency>
 ```
@@ -587,18 +588,16 @@ star-guard/
 | Требование | Как обеспечиваем |
 |------------|------------------|
 | Java 25 | `<java.version>25</java.version>`, toolchain 25, CI на Temurin 25; Boot 4 официально поддерживает Java 25 |
-| Boot 4.0 ↔ Spring Cloud | Spring Cloud **2025.1.x** — ветка, совместимая с Boot 4.0; разные мажоры Cloud/Boot не смешиваем |
-| Boot 4 ↔ springdoc | springdoc **3.x** — ветка под Spring Framework 7 / Boot 4 / Jackson 3 |
+| Boot 4.0 ↔ Spring Cloud | Spring Cloud **2025.1.0** (OpenFeign 5.0.0) — release train для Boot 4.0; разные мажоры Cloud/Boot не смешиваем |
+| Boot 4 ↔ springdoc | springdoc **3.2.0** — ветка под Spring Framework 7 / Boot 4 / Jackson 3 |
 | Jackson 3 | парсер пишем против `tools.jackson` (Boot BOM); Feign не декодирует тело, поэтому Jackson 2/3 в Feign не вмешивается |
 | Прочие транзитивные | Caffeine, Validation, JUnit, Mockito, AssertJ — версии из Boot BOM, в `pom.xml` без версий |
 | Jackson/Feign без сюрпризов | `mvn dependency:tree` + smoke-тест на итерации 0 |
 
-**Порядок фиксации версий (итерация 0):** генерируем проект на
-start.spring.io (Java 25, Boot 4.0.x) → добавляем Spring Cloud BOM 2025.1.x и
-springdoc 3.x → `./mvnw dependency:tree` и `./mvnw test` → прогоняем
-smoke-проверку Feign-вызова и `/swagger-ui.html` → фиксируем точные
-patch-версии в `pom.xml`. Если какая-то ветка ещё не в GA на момент старта,
-берём последнюю совместимую и фиксируем риск в issue — Java 25 и связка
+**Версии зафиксированы и проверены:** Boot 4.0.6 + Cloud 2025.1.0 + springdoc
+3.2.0 + WireMock 3.13.2; `mvn test` на JDK 25 — 30 тестов зелёные, включая
+WireMock-интеграцию Feign-клиента и `/v3/api-docs`; smoke-запуск отдаёт
+статистику из fixture-режима и Swagger UI. Java 25 и связка
 Boot 4 + Spring Web + OpenFeign остаются обязательными.
 
 ---
@@ -734,10 +733,9 @@ PoC сознательно повторяет будущие границы сл
    (остальные в `other`) — достаточно?
 5. **Фикстуры**: коммитим компактную фикстуру реального репозитория для
    офлайн-демо — согласны?
-6. **Стек и координаты проекта**: `ru.itmo.ipkn.starguard.core`, артефакт
-   `star-guard-core`, **Java 25 + Spring Boot 4.0.x + Spring Web + Spring Cloud
-   OpenFeign 2025.1.x + springdoc 3.x** — подтверждаем? Точные patch-версии
-   фиксируем на итерации 0 по матрице §10.3.
+6. **Зафиксировано:** `ru.itmo.ipkn.starguard.core`, артефакт
+   `star-guard-core`, Java 25 + Spring Boot 4.0.6 + Spring Web + Spring Cloud
+   OpenFeign 2025.1.0 (Feign 13.6) + springdoc 3.2.0; проверено на JDK 25.
 7. **Формат JSON**: snake_case (как в примерах `CHECKS.md`) для всех ответов —
    подтверждаем?
 
@@ -750,3 +748,16 @@ PoC сознательно повторяет будущие границы сл
 - `RepoCheck` / `CheckResult` / движок — контракт из `CHECKS.md`; моки и будущие
   реальные проверки реализуют его без изменений.
 - Новая проверка = новый бин + вес в конфиге + фикстура, без правок движка.
+
+---
+
+## 18. CI/CD (GitHub Actions)
+
+| Workflow | Триггер | Что делает |
+|----------|---------|------------|
+| `.github/workflows/ci.yml` | push в `main` / `feature/**`, pull request | JDK 25 (Temurin), кэш Maven, `mvn -B verify`; при падении публикует surefire-отчёты, при успехе — jar-артефакт |
+| `.github/workflows/release.yml` | тег `v*` | сборка jar и публикация GitHub Release с артефактом и release notes |
+
+Ветка `main` защищается обязательным зелёным CI-чеком; PR из `feature/*`
+мержатся только после успешного workflow. Контракт OpenAPI (`docs/openapi.yaml`)
+лежит в репозитории и обновляется вместе с изменениями API.

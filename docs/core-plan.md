@@ -66,8 +66,8 @@ GitHub в формате NDJSON, сжатые gzip:
 https://data.gharchive.org/2026-11-10-6.json.gz
 ```
 
-Поэтому «клиент, который отправляет запрос в GH Archive» — это HTTP-клиент,
-который:
+Поэтому «клиент, который отправляет запрос в GH Archive» — это HTTP-клиент
+на Spring Cloud OpenFeign, который:
 
 1. по окну времени вычисляет список часовых файлов (UTC);
 2. скачивает каждый файл;
@@ -124,6 +124,9 @@ https://data.gharchive.org/2026-11-10-6.json.gz
 | AD-5 | Окно — по event time (`created_at`), не по времени скачивания | Реплей/фикстуры и реальные дампы считаются одинаково |
 | AD-6 | `fixture`-режим с тем же интерфейсом клиента | Тесты без сети, надёжный fallback на демо |
 | AD-7 | OpenAPI генерируется springdoc из кода; JSON — snake_case | Документация всегда соответствует реализации, Swagger «Try it out» работает из коробки |
+| AD-8 | HTTP-клиент — **Spring Cloud OpenFeign** поверх Apache HttpClient 5 | Требование команды; declarative-клиент, единые таймауты/ретраи; файлы скачиваются streaming, без буферизации в `byte[]` |
+| AD-9 | Java 25 + Spring Boot 4.0.x + Spring Cloud 2025.1.x + springdoc 3.x | Java 25 — требование; Boot 4 — поколение, официально поддерживающее Java 25; остальные версии — строго из совместимых BOM |
+| AD-10 | Парсинг NDJSON — свой построчный парсер поверх Jackson из Boot BOM (Jackson 3) | Feign отдаёт поток байт; десериализация гигантских файлов целиком не нужна и опасна по памяти |
 
 ---
 
@@ -254,6 +257,26 @@ public interface GhArchiveClient {
 
 ### Реализация `HttpGhArchiveClient`
 
+HTTP-слой — декларативный Feign-клиент (Spring Cloud OpenFeign). Возвращаем
+`feign.Response`, а не DTO: тело читается потоком, без загрузки гигантского
+файла в память.
+
+```java
+@FeignClient(name = "ghArchive", url = "${app.archive.base-url}",
+             configuration = GhArchiveFeignConfig.class)
+public interface GhArchiveFeignClient {
+
+    /** Файл часа, например "2026-11-10-6.json.gz". Ответ не декодируется — только поток. */
+    @GetMapping("/{file}")
+    Response download(@PathVariable("file") String file);
+}
+```
+
+`GhArchiveFeignConfig` задаёт `Request.Options` (connect/read timeout) и клиент
+`feign-hc5` (Apache HttpClient 5), который поддерживает streaming и корректные
+таймауты. Статус 404 обрабатываем по `response.status()` — это отсутствующий
+час, а не ошибка; 5xx/IO — ретрай на уровне `HttpGhArchiveClient`.
+
 - URL: `{base-url}/{yyyy-MM-dd}-{H}.json.gz`, UTC (base-url по умолчанию
   `https://data.gharchive.org`).
 - Для каждого часа окна: GET → `GZIPInputStream` → `BufferedReader` →
@@ -272,7 +295,9 @@ public interface GhArchiveClient {
 - Кэш: `Caffeine` per `(repoFullName, hourStart)` — список отфильтрованных
   событий, TTL 1 час, максимум 256 записей. Повторный запрос по тому же
   репозиторию из кэша.
-- Таймауты: connect 5 s, read 30 s (настраиваются).
+- Таймауты Feign: connect 5 s, read 30 s (настраиваются в
+  `spring.cloud.openfeign.client.config.ghArchive`); `feign.Retryer` выключаем,
+  ретраи делаем сами — только для IO/5xx, чтобы не ретраить 404.
 
 ### Реализация `FixtureGhArchiveClient`
 
@@ -438,7 +463,8 @@ star-guard/
 │   ├── StarGuardCoreApplication.java
 │   ├── domain/       RepoRef, GhEvent, RepoStats, RepoSnapshot, RepoScore, ...
 │   ├── archive/      GhArchiveClient, HttpGhArchiveClient, FixtureGhArchiveClient,
-│   │                 GhArchiveParser, ArchiveProperties, ArchiveFetchResult
+│   │                 GhArchiveFeignClient, GhArchiveFeignConfig, GhArchiveParser,
+│   │                 ArchiveProperties, ArchiveFetchResult
 │   ├── stats/        StatsAggregator
 │   ├── service/      RepoReportService
 │   ├── scoring/      RepoCheck, CheckResult, ScoringEngine, MockedChecks, CheckIds
@@ -452,10 +478,128 @@ star-guard/
     └── openapi.yaml            # (опционально) экспорт контракта
 ```
 
-**Стек:** Java 21, Spring Boot 3.5.x (web, validation, actuator),
-springdoc-openapi 2.8.x, Jackson, Caffeine (кэш), Maven Wrapper.
-**Тесты:** JUnit 5, AssertJ, MockMvc, WireMock (HTTP), springdoc `/v3/api-docs`.
-Lombok не используем — records и явные конструкторы.
+### 10.1. Библиотеки и версии
+
+Целевая связка: **Java 25 (LTS) + Spring Boot 4.0.x + Spring Cloud 2025.1.x
+(OpenFeign) + springdoc 3.x**. Точные patch-версии фиксируются в `pom.xml`
+на итерации 0 (см. §10.3) — ниже целевые ветки, а не «последнее, что было».
+
+| Компонент | Артефакт | Версия | Зачем в PoC |
+|-----------|----------|--------|-------------|
+| Java | toolchain / runtime | **25 (LTS)** | требование команды |
+| Spring Boot | `spring-boot-starter-parent` (BOM) | **4.0.x** | поколение, поддерживающее Java 25; управляет версиями Spring/Jackson/тестов |
+| Spring Web MVC | `spring-boot-starter-webmvc`¹ | из Boot BOM | REST-контроллер, `ProblemDetail`, валидация запросов |
+| Bean Validation | `spring-boot-starter-validation` | из Boot BOM | `@Valid`, `@Pattern` на owner/name/hours |
+| Spring Cloud OpenFeign | `spring-cloud-starter-openfeign` | из Spring Cloud BOM | декларативный клиент GH Archive |
+| HTTP-движок Feign | `io.github.openfeign:feign-hc5` | из Spring Cloud BOM | streaming-загрузка gzip + управляемые таймауты |
+| OpenAPI / Swagger UI | `org.springdoc:springdoc-openapi-starter-webmvc-ui` | **3.x** | `/v3/api-docs`, `/swagger-ui.html` |
+| JSON (NDJSON-парсер) | Jackson 3 (`tools.jackson.*`) | из Boot BOM | построчный парсинг дампов |
+| Кэш часовых выборок | `com.github.ben-manes.caffeine:caffeine` | из Boot BOM | per-`(repo, hour)` кэш с TTL |
+| Health/metrics | `spring-boot-starter-actuator` | из Boot BOM | `/actuator/health` для демо и проверок |
+| Тесты | `spring-boot-starter-test` | из Boot BOM | JUnit, AssertJ, Mockito, MockMvc |
+| HTTP-моки в тестах | `org.wiremock:wiremock-standalone` | 3.x (явно) | отдача gzip-файлов без сети |
+| Сборка | Maven Wrapper (`mvnw`) | 3.9.x | воспроизводимая сборка с чистой машины |
+
+¹ В Spring Boot 4 Spring MVC вынесен в отдельные стартеры — точное имя
+(`spring-boot-starter-webmvc` или совместимый `spring-boot-starter-web`)
+сверяем при генерации проекта на итерации 0.
+
+**Не используем:** Lombok (records + явные конструкторы), WebFlux (PoC
+блокирующий, Feign — блокирующий клиент), отдельные JSON-библиотеки вне BOM,
+ручное управление версиями Spring-модулей.
+
+### 10.2. BOM и зависимости
+
+Версии Spring-стека не пишем руками — только BOM’ы:
+
+```xml
+<properties>
+  <java.version>25</java.version>
+</properties>
+
+<parent>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-parent</artifactId>
+  <version>4.0.x</version>              <!-- patch фиксируем на итерации 0 -->
+</parent>
+
+<dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-dependencies</artifactId>
+      <version>2025.1.x</version>       <!-- release train для Boot 4.0 -->
+      <type>pom</type>
+      <scope>import</scope>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
+```
+
+Ключевые зависимости (без версий — из BOM’ов; явные версии только там, где BOM
+не управляет):
+
+```xml
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-webmvc</artifactId>
+</dependency>
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-validation</artifactId>
+</dependency>
+<dependency>
+  <groupId>org.springframework.cloud</groupId>
+  <artifactId>spring-cloud-starter-openfeign</artifactId>
+</dependency>
+<dependency>
+  <groupId>io.github.openfeign</groupId>
+  <artifactId>feign-hc5</artifactId>
+</dependency>
+<dependency>
+  <groupId>org.springdoc</groupId>
+  <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+  <version>3.x</version>
+</dependency>
+<dependency>
+  <groupId>com.github.ben-manes.caffeine</groupId>
+  <artifactId>caffeine</artifactId>
+</dependency>
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-test</artifactId>
+  <scope>test</scope>
+</dependency>
+<dependency>
+  <groupId>org.wiremock</groupId>
+  <artifactId>wiremock-standalone</artifactId>
+  <version>3.x</version>
+  <scope>test</scope>
+</dependency>
+```
+
+### 10.3. Матрица совместимости и проверка версий
+
+| Требование | Как обеспечиваем |
+|------------|------------------|
+| Java 25 | `<java.version>25</java.version>`, toolchain 25, CI на Temurin 25; Boot 4 официально поддерживает Java 25 |
+| Boot 4.0 ↔ Spring Cloud | Spring Cloud **2025.1.x** — ветка, совместимая с Boot 4.0; разные мажоры Cloud/Boot не смешиваем |
+| Boot 4 ↔ springdoc | springdoc **3.x** — ветка под Spring Framework 7 / Boot 4 / Jackson 3 |
+| Jackson 3 | парсер пишем против `tools.jackson` (Boot BOM); Feign не декодирует тело, поэтому Jackson 2/3 в Feign не вмешивается |
+| Прочие транзитивные | Caffeine, Validation, JUnit, Mockito, AssertJ — версии из Boot BOM, в `pom.xml` без версий |
+| Jackson/Feign без сюрпризов | `mvn dependency:tree` + smoke-тест на итерации 0 |
+
+**Порядок фиксации версий (итерация 0):** генерируем проект на
+start.spring.io (Java 25, Boot 4.0.x) → добавляем Spring Cloud BOM 2025.1.x и
+springdoc 3.x → `./mvnw dependency:tree` и `./mvnw test` → прогоняем
+smoke-проверку Feign-вызова и `/swagger-ui.html` → фиксируем точные
+patch-версии в `pom.xml`. Если какая-то ветка ещё не в GA на момент старта,
+берём последнюю совместимую и фиксируем риск в issue — Java 25 и связка
+Boot 4 + Spring Web + OpenFeign остаются обязательными.
 
 ---
 
@@ -468,6 +612,13 @@ server:
 spring:
   jackson:
     property-naming-strategy: SNAKE_CASE
+  cloud:
+    openfeign:
+      client:
+        config:
+          ghArchive:
+            connect-timeout: 5000   # мс
+            read-timeout: 30000     # мс: часовой файл большой
 
 springdoc:
   swagger-ui:
@@ -481,9 +632,7 @@ app:
     max-window-hours: 24
     lag-hours: 2              # GH Archive публикует дампы с задержкой
     parallelism: 4
-    connect-timeout: 5s
-    read-timeout: 30s
-    retries: 1
+    retries: 1                # только IO/5xx; 404 = отсутствующий час
     fail-fast: false          # пропускать недоступные часы, отмечая их в ответе
     cache-ttl: 1h
   scoring:
@@ -523,7 +672,7 @@ app:
 | Итерация | Содержание | Оценка |
 |----------|------------|--------|
 | **0. Согласование** | Ревью этого плана, фиксация вопросов из §16 | 0.5–1 ч |
-| **1. Скелет + домен** | `pom.xml`, Boot-приложение, доменные records, `application.yaml`, `OpenApiConfig` | 2–3 ч |
+| **1. Скелет + домен** | Генерация Boot 4 проекта (Java 25), фиксация версий по §10.3, `pom.xml` с BOM’ами, `@EnableFeignClients`, доменные records, `application.yaml`, `OpenApiConfig` | 2–3 ч |
 | **2. Клиент архива** | `HttpGhArchiveClient`, парсер, окно/лаг, кэш, `FixtureGhArchiveClient` + фикстура, unit-тесты | 3–4 ч |
 | **3. Статистика + scoring** | `StatsAggregator`, `RepoReportService`, мок-проверки, движок, тесты | 2–3 ч |
 | **4. REST + Swagger** | Контроллер, DTO, ошибки, валидация, springdoc, MockMvc-тесты | 2–3 ч |
@@ -585,8 +734,10 @@ PoC сознательно повторяет будущие границы сл
    (остальные в `other`) — достаточно?
 5. **Фикстуры**: коммитим компактную фикстуру реального репозитория для
    офлайн-демо — согласны?
-6. **Координаты проекта**: `ru.itmo.ipkn.starguard.core`, артефакт
-   `star-guard-core`, Java 21 + Spring Boot 3.5.x — ок?
+6. **Стек и координаты проекта**: `ru.itmo.ipkn.starguard.core`, артефакт
+   `star-guard-core`, **Java 25 + Spring Boot 4.0.x + Spring Web + Spring Cloud
+   OpenFeign 2025.1.x + springdoc 3.x** — подтверждаем? Точные patch-версии
+   фиксируем на итерации 0 по матрице §10.3.
 7. **Формат JSON**: snake_case (как в примерах `CHECKS.md`) для всех ответов —
    подтверждаем?
 

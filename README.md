@@ -21,6 +21,8 @@
 - движок `ScoringEngine`: веса, порог confidence, ренормировка, правила усиления
   и уровни `low / medium / high / critical`, explain по каждой проверке;
 - мок-проверки C1–C5 с профилями `healthy | borderline | suspicious`;
+- реальная проверка C3 «Дисбаланс звёзды/активность», включается флагом
+  (см. [Конфигурация](#конфигурация));
 - REST API + OpenAPI/Swagger UI;
 - офлайн-режим на фикстурах для тестов и стабильного демо;
 - кэш часовых выборок, ретраи, обработка отсутствующих часов и битых строк.
@@ -74,6 +76,11 @@ curl "http://localhost:8080/api/v1/repos/spring-projects/spring-boot?hours=6"
 
 # демо из фикстуры
 curl "http://localhost:8080/api/v1/repos/demo/star-guard?hours=3&mock_mode=suspicious"
+
+# демо реального C3 (сервис запущен с --app.scoring.checks.engagement.mode=real):
+# накрутка — 120 звёзд при 2 пушах, C3 ≈ 0.92; здоровая библиотека — C3 = 0
+curl "http://localhost:8080/api/v1/repos/demo/star-stuffing?hours=3"
+curl "http://localhost:8080/api/v1/repos/demo/healthy-lib?hours=3"
 ```
 
 | Метод | Путь | Описание |
@@ -157,9 +164,42 @@ RepoController → JSON (+ OpenAPI/Swagger)
 - `app.archive.mode` — `http` или `fixture`;
 - `app.archive.default-window-hours`, `max-window-hours`, `lag-hours`;
 - `app.archive.parallelism`, `retries`, `fail-fast`, `cache-ttl`;
-- `app.scoring.mock-mode`, веса проверок, усиления и пороги уровней.
+- `app.scoring.mock-mode`, веса проверок, усиления и пороги уровней;
+- `app.scoring.mode` — `mock` (по умолчанию) или `real`: общий переключатель
+  реализаций проверок;
+- `app.scoring.checks.<id>.mode` — точечное переопределение для одной проверки,
+  по умолчанию `${app.scoring.mode:mock}`; рядом лежат её пороги
+  (`app.scoring.checks.engagement.*` для C3).
 
 В коде нет магических порогов scoring: всё вынесено в конфиг.
+
+Реальная и мок-реализация проверки разводятся `@ConditionalOnProperty`
+по `app.scoring.checks.<id>.mode`, поэтому в контексте всегда ровно один бин
+на id. Значение режима валидируется при старте: опечатка (`reall`) роняет
+приложение, а не отключает проверку молча.
+
+```bash
+# включить только реальный C3
+java -jar target/star-guard-core-0.1.0-SNAPSHOT.jar --app.archive.mode=fixture \
+  --app.scoring.checks.engagement.mode=real
+
+# включить все реализованные реальные проверки
+java -jar target/star-guard-core-0.1.0-SNAPSHOT.jar --app.scoring.mode=real
+```
+
+### C3 «Дисбаланс звёзды/активность»
+
+```
+engagement = (forks + issues + pulls + pushes) / max(stars, 1)
+s3         = clamp01((engagement-threshold − engagement) / engagement-threshold)
+gate       = min(1, stars / stars-gate)
+score      = s3 × gate
+```
+
+Пороги по умолчанию: `engagement-threshold: 0.2`, `stars-gate: 20`.
+Если звёзд меньше `min-stars-for-confidence` (5), confidence = 0 и C3 не входит
+в score (`details.reason = too_few_stars`). В `details` видны `stars`,
+`activity`, `engagement`, `s3`, `gate` и пороги.
 
 ## Тесты
 
@@ -167,9 +207,10 @@ RepoController → JSON (+ OpenAPI/Swagger)
 mvn test
 ```
 
-30 тестов: парсер NDJSON, агрегатор, движок score, мок-профили, Feign-клиент
-через WireMock, контроллер, интеграционный сценарий на фикстуре и проверка
-`/v3/api-docs`. Все тесты работают офлайн.
+45 тестов: парсер NDJSON, агрегатор, движок score, мок-профили, Feign-клиент
+через WireMock, контроллер, интеграционный сценарий на фикстуре, проверка
+`/v3/api-docs` и реальный C3 (формула, пороги, переключатель mock/real,
+фикстуры `star-stuffing` / `healthy-lib`). Все тесты работают офлайн.
 
 ## CI/CD
 
@@ -180,11 +221,15 @@ mvn test
 
 ## Ограничения PoC
 
-- проверки C1–C5 замоканы; реальные алгоритмы — следующий этап
+- проверки C1, C2, C4, C5 замоканы; C3 реальная, но по умолчанию выключена
+  (`app.scoring.mode=mock`), чтобы демо-профили давали стабильный score
   ([docs/core-plan.md](docs/core-plan.md), `CHECKS.md`);
 - GH Archive не содержит даты создания аккаунта и глобальных индексов акторов,
   поэтому `DataAvailability` в PoC фиксирует отсутствие этих блоков;
 - GH Archive отдаёт только часовые дампы большого размера: 24 часа — это
   несколько ГБ трафика, поэтому по умолчанию окно 6 часов;
-- фикстура `demo/star-guard` синтетическая и сдвигается во времени в текущее окно;
+- фикстуры `demo/star-guard`, `demo/star-stuffing`, `demo/healthy-lib`
+  синтетические и сдвигаются во времени в текущее окно по самому позднему
+  событию среди всех файлов — новые фикстуры не должны выходить за
+  `2026-11-09T02:59:30Z`, иначе сдвинутся окна существующих;
 - Kafka, Redis, SSE, trending и UI в PoC отсутствуют по плану.

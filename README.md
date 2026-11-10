@@ -86,10 +86,10 @@ curl http://localhost:8080/actuator/health
 curl "http://localhost:8080/api/v1/repos/demo/star-guard?hours=3&mock_mode=suspicious"
 ```
 
-Для работы с реальным GH Archive запустите сервис с `APP_ARCHIVE_MODE=http`:
+Для анализа реальных репозиториев через GH Archive с реальными проверками запустите:
 
 ```bash
-APP_ARCHIVE_MODE=http docker compose up --build -d
+APP_ARCHIVE_MODE=http APP_SCORING_MODE=real docker compose up --build -d
 ```
 
 Внешний порт можно изменить переменной `STAR_GUARD_PORT`, например

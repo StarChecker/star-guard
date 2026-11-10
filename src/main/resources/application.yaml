@@ -1,0 +1,64 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: star-guard-core
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+  cloud:
+    openfeign:
+      client:
+        config:
+          ghArchive:
+            connect-timeout: 5000
+            read-timeout: 30000
+            logger-level: basic
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  archive:
+    base-url: https://data.gharchive.org
+    mode: http                # http | fixture
+    default-window-hours: 6
+    max-window-hours: 24
+    lag-hours: 2              # GH Archive публикует дампы с задержкой
+    parallelism: 4
+    retries: 1                # только IO/5xx; 404 = отсутствующий час
+    fail-fast: false          # пропускать недоступные часы, отмечая их в ответе
+    cache-ttl: 1h
+    fixture-location: "classpath:fixtures/gharchive/*.jsonl"
+  scoring:
+    mock-mode: healthy        # healthy | borderline | suspicious
+    min-confidence: 0.5
+    weights:
+      burst: 0.30
+      fresh_accounts: 0.22
+      engagement: 0.18
+      actor_overlap: 0.22
+      circadian: 0.08
+    amplification:
+      multi-trigger:
+        min-checks: 2
+        check-score-at-least: 0.7
+        floor: 60
+      strong-check:
+        check-ids: [burst, fresh_accounts, actor_overlap]
+        check-score-at-least: 0.85
+        min-confidence: 0.7
+        floor: 70
+    levels:
+      medium: 30
+      high: 60
+      critical: 85

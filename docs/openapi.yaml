@@ -1,0 +1,274 @@
+openapi: 3.1.0
+info:
+  title: Star Guard Core PoC
+  description: |
+    Статистика репозитория по данным GH Archive и suspicious score.
+    В PoC проверки C1–C5 замоканы: в ответе score.mocked = true,
+    профиль моков выбирается параметром mock_mode.
+  version: 0.1.0
+servers:
+- url: http://localhost:8080
+tags:
+- name: repos
+  description: "Статистика репозитория и suspicious score (PoC, проверки замоканы)"
+paths:
+  /api/v1/repos/{owner}/{name}:
+    get:
+      tags:
+      - repos
+      summary: Статистика репозитория и suspicious score
+      description: |
+        Скачивает часовые дампы GH Archive за последние N полных часов,
+        считает статистику по репозиторию и прогоняет её через движок scoring.
+        В PoC проверки C1–C5 замоканы: score.mocked = true.
+      operationId: getRepoReport
+      parameters:
+      - name: owner
+        in: path
+        description: Владелец репозитория
+        required: true
+        schema:
+          type: string
+          pattern: "^[A-Za-z0-9_.-]{1,100}$"
+        example: spring-projects
+      - name: name
+        in: path
+        description: Имя репозитория
+        required: true
+        schema:
+          type: string
+          pattern: "^[A-Za-z0-9_.-]{1,100}$"
+        example: spring-boot
+      - name: hours
+        in: query
+        description: Размер окна в часах; по умолчанию — из конфигурации
+        required: false
+        schema:
+          type: integer
+          format: int32
+          maximum: 24
+          minimum: 1
+        example: 6
+      - name: mock_mode
+        in: query
+        description: "PoC: профиль мок-проверок (healthy | borderline | suspicious)"
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Отчёт по репозиторию
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoReportDto"
+        "400":
+          description: Некорректные параметры запроса
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoReportDto"
+        "404":
+          description: В окне нет событий репозитория
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoReportDto"
+        "502":
+          description: GH Archive недоступен для всего окна
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoReportDto"
+        "500":
+          description: Внутренняя ошибка
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoReportDto"
+components:
+  schemas:
+    ArchiveDto:
+      type: object
+      description: Сведения о загрузке окна из GH Archive
+      properties:
+        hoursRequested:
+          type: integer
+          format: int32
+        hoursLoaded:
+          type: integer
+          format: int32
+        missingHours:
+          type: array
+          description: "Часы, файлы которых отсутствуют или не загрузились"
+          items:
+            type: string
+            format: date-time
+        parseErrors:
+          type: integer
+          format: int32
+          description: "Строки, которые не удалось разобрать"
+        cached:
+          type: boolean
+    CheckDto:
+      type: object
+      description: Результат одной проверки и её вклад в итоговый score
+      properties:
+        id:
+          type: string
+          example: burst
+        score:
+          type: number
+          format: double
+        confidence:
+          type: number
+          format: double
+        weight:
+          type: number
+          format: double
+        contribution:
+          type: number
+          format: double
+        active:
+          type: boolean
+        error:
+          type: string
+        details:
+          type: object
+          additionalProperties: {}
+    HourBucketDto:
+      type: object
+      description: Звёзды за один час окна
+      properties:
+        hour:
+          type: string
+          format: date-time
+        stars:
+          type: integer
+          format: int32
+    RepoDto:
+      type: object
+      description: Идентификация репозитория
+      properties:
+        owner:
+          type: string
+          example: spring-projects
+        name:
+          type: string
+          example: spring-boot
+        fullName:
+          type: string
+          example: spring-projects/spring-boot
+    RepoReportDto:
+      type: object
+      description: Отчёт по репозиторию. В PoC проверки C1–C5 замоканы (score.mocked
+        = true)
+      properties:
+        repo:
+          $ref: "#/components/schemas/RepoDto"
+        window:
+          $ref: "#/components/schemas/WindowDto"
+        stats:
+          $ref: "#/components/schemas/StatsDto"
+        score:
+          $ref: "#/components/schemas/ScoreDto"
+        archive:
+          $ref: "#/components/schemas/ArchiveDto"
+    ScoreDto:
+      type: object
+      description: Итоговый suspicious score и explain по проверкам
+      properties:
+        score:
+          type: integer
+          format: int32
+          example: 72
+        level:
+          type: string
+          enum:
+          - low
+          - medium
+          - high
+          - critical
+          example: high
+        confidence:
+          type: number
+          format: double
+        insufficientData:
+          type: boolean
+        mocked:
+          type: boolean
+          description: "true, пока C1–C5 — моки (PoC)"
+          example: true
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckDto"
+        rulesApplied:
+          type: array
+          items:
+            type: string
+        computedAt:
+          type: string
+          format: date-time
+    StatsDto:
+      type: object
+      description: "Статистика репозитория за окно, посчитанная по событиям GH Archive"
+      properties:
+        totalEvents:
+          type: integer
+          format: int32
+          example: 4231
+        stars:
+          type: integer
+          format: int32
+          example: 142
+        forks:
+          type: integer
+          format: int32
+          example: 21
+        pushes:
+          type: integer
+          format: int32
+          example: 3110
+        issues:
+          type: integer
+          format: int32
+          example: 233
+        pullRequests:
+          type: integer
+          format: int32
+          example: 725
+        other:
+          type: integer
+          format: int32
+        uniqueActors:
+          type: integer
+          format: int32
+          example: 611
+        starActors:
+          type: integer
+          format: int32
+          example: 138
+        peak_stars_10m:
+          type: integer
+          format: int32
+          description: Максимум звёзд в любом 10-минутном окне
+          example: 9
+        starsByHour:
+          type: array
+          items:
+            $ref: "#/components/schemas/HourBucketDto"
+    WindowDto:
+      type: object
+      description: "Окно анализа (полуоткрытый интервал [from, to), UTC)"
+      properties:
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        hours:
+          type: integer
+          format: int32
+          example: 6

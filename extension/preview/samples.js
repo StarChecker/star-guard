@@ -111,7 +111,7 @@ window.STAR_GUARD_SAMPLES = {
         "repo_star_actors": 52
        },
        {
-        "repo": "spring-projects/spring-boot",
+        "repo": "acme/web-framework",
         "jaccard": 0.01,
         "shared_actors": 2,
         "repo_star_actors": 118
@@ -336,9 +336,9 @@ window.STAR_GUARD_SAMPLES = {
  },
  "healthy": {
   "repo": {
-   "owner": "spring-projects",
-   "name": "spring-boot",
-   "full_name": "spring-projects/spring-boot"
+   "owner": "acme",
+   "name": "web-framework",
+   "full_name": "acme/web-framework"
   },
   "window": {
    "from": "2026-11-10T09:00:00Z",
@@ -652,8 +652,8 @@ window.STAR_GUARD_SAMPLES = {
    "suspicious_stars": 52,
    "mocked": true
   },
-  "spring-projects/spring-boot": {
-   "full_name": "spring-projects/spring-boot",
+  "acme/web-framework": {
+   "full_name": "acme/web-framework",
    "status": "ok",
    "score": 7,
    "level": "low",
@@ -674,8 +674,8 @@ window.STAR_GUARD_SAMPLES = {
    "suspicious_stars": 48,
    "mocked": true
   },
-  "torvalds/linux": {
-   "full_name": "torvalds/linux",
+  "example/kernel-tools": {
+   "full_name": "example/kernel-tools",
    "status": "ok",
    "score": 34,
    "level": "medium",

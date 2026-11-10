@@ -15,7 +15,8 @@ public record RepoSnapshot(
         int uniqueActors,
         int starActors,
         int[] starsByMinute,
-        DataAvailability data
+        DataAvailability data,
+        StarIndex starIndex
 ) {
 
     public RepoSnapshot {
@@ -27,6 +28,20 @@ public record RepoSnapshot(
         starsByMinute = starsByMinute == null
                 ? new int[window.hours() * 60]
                 : starsByMinute.clone();
+        starIndex = starIndex == null ? StarIndex.empty() : starIndex;
+    }
+
+    /** Snapshot без глобального индекса звёзд: C4 в этом случае неактивна. */
+    public RepoSnapshot(
+            RepoRef repo,
+            TimeWindow window,
+            Instant capturedAt,
+            EventCounts counts,
+            int uniqueActors,
+            int starActors,
+            int[] starsByMinute,
+            DataAvailability data) {
+        this(repo, window, capturedAt, counts, uniqueActors, starActors, starsByMinute, data, StarIndex.empty());
     }
 
     @Override

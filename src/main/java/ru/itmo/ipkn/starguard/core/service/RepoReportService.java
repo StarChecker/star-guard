@@ -53,7 +53,7 @@ public class RepoReportService {
             throw new RepoNotFoundException(repo, window);
         }
 
-        RepoAggregate aggregate = aggregator.aggregate(repo, window, archive.events());
+        RepoAggregate aggregate = aggregator.aggregate(repo, window, archive.events(), archive.starIndex());
         MockMode mockMode = requestedMockMode == null
                 ? scoringProperties.mockMode()
                 : requestedMockMode;

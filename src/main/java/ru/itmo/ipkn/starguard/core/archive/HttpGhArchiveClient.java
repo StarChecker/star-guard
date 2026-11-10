@@ -11,8 +11,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
+import ru.itmo.ipkn.starguard.core.config.StarIndexProperties;
+import ru.itmo.ipkn.starguard.core.domain.EventType;
 import ru.itmo.ipkn.starguard.core.domain.GhEvent;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
+import ru.itmo.ipkn.starguard.core.domain.StarIndex;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 
 import java.io.BufferedReader;
@@ -38,6 +41,9 @@ import java.util.zip.GZIPInputStream;
 /**
  * Скачивает часовые дампы GH Archive через Feign, потоково распаковывает gzip
  * и оставляет события запрошенного репозитория.
+ * <p>
+ * В том же проходе по дампу собирается {@link StarIndex} — звёзды всех репозиториев часа.
+ * Он кэшируется по часу отдельно от событий репозитория и нужен проверке C4.
  */
 @Component
 @ConditionalOnProperty(name = "app.archive.mode", havingValue = "http", matchIfMissing = true)
@@ -54,14 +60,18 @@ public class HttpGhArchiveClient implements GhArchiveClient {
     private final ArchiveProperties properties;
     private final ExecutorService executor;
     private final Cache<@NonNull String, CachedHour> cache;
+    private final StarIndexProperties starIndexProperties;
+    private final Cache<@NonNull Instant, StarIndex> starIndexCache;
 
     public HttpGhArchiveClient(
             GhArchiveFeignClient feignClient,
             GhArchiveParser parser,
-            ArchiveProperties properties) {
+            ArchiveProperties properties,
+            StarIndexProperties starIndexProperties) {
         this.feignClient = feignClient;
         this.parser = parser;
         this.properties = properties;
+        this.starIndexProperties = starIndexProperties;
 
         AtomicInteger threadCounter = new AtomicInteger();
         this.executor = Executors.newFixedThreadPool(properties.parallelism(), runnable -> {
@@ -72,6 +82,10 @@ public class HttpGhArchiveClient implements GhArchiveClient {
         this.cache = Caffeine.newBuilder()
                 .expireAfterWrite(properties.cacheTtl())
                 .maximumSize(MAX_CACHE_ENTRIES)
+                .build();
+        this.starIndexCache = Caffeine.newBuilder()
+                .expireAfterWrite(properties.cacheTtl())
+                .maximumSize(starIndexProperties.cacheHours())
                 .build();
     }
 
@@ -124,16 +138,24 @@ public class HttpGhArchiveClient implements GhArchiveClient {
                 .toList();
         int parseErrors = results.stream().mapToInt(HourResult::parseErrors).sum();
         boolean cached = !results.isEmpty() && results.stream().allMatch(HourResult::cached);
+        StarIndex starIndex = StarIndex.merge(results.stream()
+                .map(HourResult::starIndex)
+                .filter(StarIndex::available)
+                .toList());
 
         return new ArchiveFetchResult(
-                events, hours.size(), hoursLoaded, missingHours, parseErrors, cached);
+                events, hours.size(), hoursLoaded, missingHours, parseErrors, cached, starIndex);
     }
 
     private HourResult loadHour(RepoRef repo, Instant hour) {
         String cacheKey = GhArchiveParser.normalizeFullName(repo.fullName()) + "|" + hour;
         CachedHour cached = cache.getIfPresent(cacheKey);
         if (cached != null) {
-            return new HourResult(hour, cached.events(), cached.parseErrors(), false, false, true);
+            StarIndex hourIndex = starIndexProperties.enabled()
+                    ? starIndexCache.getIfPresent(hour)
+                    : null;
+            return new HourResult(hour, cached.events(), cached.parseErrors(), false, false, true,
+                    hourIndex == null ? StarIndex.empty() : hourIndex);
         }
 
         RuntimeException lastError = null;
@@ -142,6 +164,9 @@ public class HttpGhArchiveClient implements GhArchiveClient {
                 HourResult result = fetchHour(repo, hour);
                 if (!result.missing() && !result.failed()) {
                     cache.put(cacheKey, new CachedHour(result.events(), result.parseErrors()));
+                    if (result.starIndex().available()) {
+                        starIndexCache.put(hour, result.starIndex());
+                    }
                 }
                 return result;
             } catch (TransientArchiveException | RetryableException e) {
@@ -173,6 +198,9 @@ public class HttpGhArchiveClient implements GhArchiveClient {
 
             List<GhEvent> events = new ArrayList<>();
             int parseErrors = 0;
+            StarIndex.Builder starIndex = starIndexProperties.enabled()
+                    ? new StarIndex.Builder(starIndexProperties.maxPairsPerHour())
+                    : null;
             try (InputStream body = response.body().asInputStream();
                  GZIPInputStream gzip = new GZIPInputStream(body);
                  BufferedReader reader = new BufferedReader(
@@ -184,16 +212,28 @@ public class HttpGhArchiveClient implements GhArchiveClient {
                     }
                     try {
                         Optional<GhEvent> parsed = parser.parse(line);
-                        if (parsed.isPresent()
-                                && parsed.get().repoFullName().equalsIgnoreCase(repo.fullName())) {
-                            events.add(parsed.get());
+                        if (parsed.isEmpty()) {
+                            continue;
+                        }
+                        GhEvent event = parsed.get();
+                        if (event.repoFullName().equalsIgnoreCase(repo.fullName())) {
+                            events.add(event);
+                        }
+                        if (starIndex != null && event.type() == EventType.WATCH) {
+                            starIndex.add(event.repoFullName(), event.actorId());
                         }
                     } catch (MalformedEventException _) {
                         parseErrors++;
                     }
                 }
             }
-            return new HourResult(hour, List.copyOf(events), parseErrors, false, false, false);
+            StarIndex hourIndex = starIndex == null ? StarIndex.empty() : starIndex.build(1);
+            if (hourIndex.available()) {
+                log.debug("GH Archive hour {}: star index {} repos, {} pairs{}", hour,
+                        hourIndex.repoCount(), hourIndex.pairCount(),
+                        hourIndex.truncated() ? " (truncated)" : "");
+            }
+            return new HourResult(hour, List.copyOf(events), parseErrors, false, false, false, hourIndex);
         } catch (IOException e) {
             throw new TransientArchiveException("I/O error while fetching " + file, e);
         }
@@ -220,15 +260,16 @@ public class HttpGhArchiveClient implements GhArchiveClient {
             int parseErrors,
             boolean missing,
             boolean failed,
-            boolean cached
+            boolean cached,
+            StarIndex starIndex
     ) {
 
         static HourResult missing(Instant hour) {
-            return new HourResult(hour, List.of(), 0, true, false, false);
+            return new HourResult(hour, List.of(), 0, true, false, false, StarIndex.empty());
         }
 
         static HourResult failed(Instant hour) {
-            return new HourResult(hour, List.of(), 0, false, true, false);
+            return new HourResult(hour, List.of(), 0, false, true, false, StarIndex.empty());
         }
     }
 

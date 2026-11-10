@@ -69,7 +69,7 @@ public class RepoReportService {
             throw new RepoNotFoundException(repo, window);
         }
 
-        RepoAggregate aggregate = aggregator.aggregate(repo, window, archive.events());
+        RepoAggregate aggregate = aggregator.aggregate(repo, window, archive.events(), archive.starIndex());
         return buildReport(repo, new RepoData(window, aggregate, archive), requestedMockMode);
     }
 

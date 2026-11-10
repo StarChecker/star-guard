@@ -10,6 +10,7 @@ import ru.itmo.ipkn.starguard.core.domain.HourBucket;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.RepoSnapshot;
 import ru.itmo.ipkn.starguard.core.domain.RepoStats;
+import ru.itmo.ipkn.starguard.core.domain.StarIndex;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 
 import java.time.Clock;
@@ -36,6 +37,15 @@ public class StatsAggregator {
     }
 
     public RepoAggregate aggregate(RepoRef repo, TimeWindow window, List<GhEvent> events) {
+        return aggregate(repo, window, events, StarIndex.empty());
+    }
+
+    /**
+     * @param starIndex глобальный индекс звёзд окна для C4; не влияет на статистику репозитория
+     */
+    public RepoAggregate aggregate(
+            RepoRef repo, TimeWindow window, List<GhEvent> events, StarIndex starIndex) {
+        StarIndex index = starIndex == null ? StarIndex.empty() : starIndex;
         int stars = 0;
         int forks = 0;
         int pushes = 0;
@@ -97,8 +107,9 @@ public class StatsAggregator {
                 actors.size(),
                 starActors.size(),
                 starsByMinute,
-                DataAvailability.pocDefaults(),
-                starActorProfiles(starActors, actorTraces));
+                DataAvailability.pocDefaults().withCrossRepoOverlap(index.available()),
+                starActorProfiles(starActors, actorTraces),
+                index);
 
         return new RepoAggregate(stats, snapshot);
     }

@@ -43,9 +43,11 @@ public class IndexConfig {
             TimeWindowCalculator windowCalculator,
             ArchiveProperties archiveProperties,
             RepoIndexProperties indexProperties,
+            StarIndexProperties starIndexProperties,
             Clock clock) {
         return new RepoIndexBuilder(
-                bulkReader, windowCalculator, archiveProperties, indexProperties, clock);
+                bulkReader, windowCalculator, archiveProperties, indexProperties,
+                starIndexProperties, clock);
     }
 
     @Bean

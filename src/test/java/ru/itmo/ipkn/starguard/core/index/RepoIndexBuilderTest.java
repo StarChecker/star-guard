@@ -67,6 +67,17 @@ class RepoIndexBuilderTest {
         assertThat(top.hours().get(2).counts().pushes()).isEqualTo(1);
         assertThat(top.hours().stream().mapToInt(hour -> hour.counts().total()).sum())
                 .isEqualTo(6);
+
+        // индекс звёзд для C4 покрывает все репозитории, а не только топ-N
+        var stars = snapshot.starIndex(snapshot.window());
+        assertThat(stars.hoursCovered()).isEqualTo(3);
+        assertThat(stars.actors("a/one")).containsExactly(1L, 2L);
+        assertThat(stars.actors("c/four")).containsExactly(4L);
+        var lastHour = snapshot.starIndex(snapshot.windowFor(1));
+        assertThat(lastHour.hoursCovered()).isEqualTo(1);
+        assertThat(lastHour.actors("a/one")).containsExactly(1L);
+        assertThat(lastHour.actors("a/two")).containsExactly(5L);
+        assertThat(lastHour.actors("b/three")).isEmpty();
     }
 
     @Test
@@ -82,6 +93,7 @@ class RepoIndexBuilderTest {
         assertThat(snapshot.hoursLoaded()).isEqualTo(2);
         assertThat(snapshot.missingHours()).containsExactly(H08);
         assertThat(snapshot.repos()).containsKeys("a/one", "b/three");
+        assertThat(snapshot.starIndex(snapshot.window()).hoursCovered()).isEqualTo(2);
     }
 
     @Test

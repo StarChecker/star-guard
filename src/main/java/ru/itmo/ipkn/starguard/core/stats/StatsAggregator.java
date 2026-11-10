@@ -1,8 +1,10 @@
 package ru.itmo.ipkn.starguard.core.stats;
 
 import org.springframework.stereotype.Component;
+import ru.itmo.ipkn.starguard.core.domain.ActorProfile;
 import ru.itmo.ipkn.starguard.core.domain.DataAvailability;
 import ru.itmo.ipkn.starguard.core.domain.EventCounts;
+import ru.itmo.ipkn.starguard.core.domain.EventType;
 import ru.itmo.ipkn.starguard.core.domain.GhEvent;
 import ru.itmo.ipkn.starguard.core.domain.HourBucket;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
@@ -12,9 +14,13 @@ import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** Считает статистику репозитория за окно и собирает snapshot для scoring. */
@@ -41,6 +47,7 @@ public class StatsAggregator {
         Set<Long> actors = new HashSet<>();
         Set<Long> starActors = new HashSet<>();
         Set<String> seenEventIds = new HashSet<>();
+        Map<Long, ActorTrace> actorTraces = new HashMap<>();
         int[] starsByMinute = new int[window.hours() * 60];
 
         for (GhEvent event : events) {
@@ -57,6 +64,7 @@ public class StatsAggregator {
 
             total++;
             actors.add(event.actorId());
+            actorTraces.computeIfAbsent(event.actorId(), id -> new ActorTrace()).record(event);
             switch (event.type()) {
                 case WATCH -> {
                     stars++;
@@ -89,7 +97,8 @@ public class StatsAggregator {
                 actors.size(),
                 starActors.size(),
                 starsByMinute,
-                DataAvailability.pocDefaults());
+                DataAvailability.pocDefaults(),
+                starActorProfiles(starActors, actorTraces));
 
         return new RepoAggregate(stats, snapshot);
     }
@@ -108,6 +117,13 @@ public class StatsAggregator {
         return List.copyOf(buckets);
     }
 
+    private static List<ActorProfile> starActorProfiles(Set<Long> starActors, Map<Long, ActorTrace> traces) {
+        return starActors.stream()
+                .map(actorId -> traces.get(actorId).toProfile(actorId))
+                .sorted(Comparator.comparing(ActorProfile::actorHash))
+                .toList();
+    }
+
     static int maxSlidingSum(int[] values, int windowSize) {
         if (values.length == 0 || windowSize <= 0) {
             return 0;
@@ -123,5 +139,29 @@ public class StatsAggregator {
             max = Math.max(max, sum);
         }
         return max;
+    }
+
+    private static final class ActorTrace {
+
+        private Instant firstSeen;
+        private Instant lastActivityAt;
+        private Instant accountCreatedAt;
+
+        void record(GhEvent event) {
+            Instant at = event.createdAt();
+            if (firstSeen == null || at.isBefore(firstSeen)) {
+                firstSeen = at;
+            }
+            if (event.type() != EventType.WATCH && (lastActivityAt == null || at.isAfter(lastActivityAt))) {
+                lastActivityAt = at;
+            }
+            if (accountCreatedAt == null) {
+                accountCreatedAt = event.actorCreatedAt();
+            }
+        }
+
+        ActorProfile toProfile(long actorId) {
+            return new ActorProfile(ActorProfile.hashOf(actorId), firstSeen, accountCreatedAt, lastActivityAt);
+        }
     }
 }

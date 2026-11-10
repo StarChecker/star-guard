@@ -85,7 +85,7 @@ public class FixtureGhArchiveClient implements GhArchiveClient {
 
         List<GhEvent> events = fixtureEvents.stream()
                 .filter(event -> event.repoFullName().equalsIgnoreCase(repo.fullName()))
-                .map(event -> event.withCreatedAt(event.createdAt().plus(shift)))
+                .map(event -> event.shiftedBy(shift))
                 .filter(event -> !event.createdAt().isBefore(window.from()))
                 .filter(event -> event.createdAt().isBefore(window.to()))
                 .sorted(Comparator.comparing(GhEvent::createdAt).thenComparing(GhEvent::eventId))

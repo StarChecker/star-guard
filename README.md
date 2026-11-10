@@ -21,8 +21,8 @@
 - движок `ScoringEngine`: веса, порог confidence, ренормировка, правила усиления
   и уровни `low / medium / high / critical`, explain по каждой проверке;
 - мок-проверки C1–C5 с профилями `healthy | borderline | suspicious`;
-- реальная проверка C3 «Дисбаланс звёзды/активность», включается флагом
-  (см. [Конфигурация](#конфигурация));
+- реальные проверки C2 "Свежие и пустые аккаунты" и C3 «Дисбаланс звёзды/активность»,
+  включаются флагом (см. [Конфигурация](#конфигурация));
 - REST API + OpenAPI/Swagger UI;
 - офлайн-режим на фикстурах для тестов и стабильного демо;
 - кэш часовых выборок, ретраи, обработка отсутствующих часов и битых строк.
@@ -81,6 +81,13 @@ curl "http://localhost:8080/api/v1/repos/demo/star-guard?hours=3&mock_mode=suspi
 # накрутка — 120 звёзд при 2 пушах, C3 ≈ 0.92; здоровая библиотека — C3 = 0
 curl "http://localhost:8080/api/v1/repos/demo/star-stuffing?hours=3"
 curl "http://localhost:8080/api/v1/repos/demo/healthy-lib?hours=3"
+
+# демо реального C2 (сервис запущен с --app.scoring.checks.fresh-accounts.mode=real):
+# ферма - 22 из 25 звёзд от аккаунтов моложе 30 дней, C2 ~ 0.97, level high;
+# органика - 10% свежих, C2 = 0; без даты создания аккаунта C2 неактивна
+curl "http://localhost:8080/api/v1/repos/demo/fresh-farm?hours=3"
+curl "http://localhost:8080/api/v1/repos/demo/organic?hours=3"
+curl "http://localhost:8080/api/v1/repos/demo/no-actor-data?hours=3"
 ```
 
 | Метод | Путь | Описание |
@@ -169,7 +176,8 @@ RepoController → JSON (+ OpenAPI/Swagger)
   реализаций проверок;
 - `app.scoring.checks.<id>.mode` — точечное переопределение для одной проверки,
   по умолчанию `${app.scoring.mode:mock}`; рядом лежат её пороги
-  (`app.scoring.checks.engagement.*` для C3).
+  (`app.scoring.checks.fresh-accounts.*` для C2,
+  `app.scoring.checks.engagement.*` для C3).
 
 В коде нет магических порогов scoring: всё вынесено в конфиг.
 
@@ -186,6 +194,33 @@ java -jar target/star-guard-core-0.1.0-SNAPSHOT.jar --app.archive.mode=fixture \
 # включить все реализованные реальные проверки
 java -jar target/star-guard-core-0.1.0-SNAPSHOT.jar --app.scoring.mode=real
 ```
+
+### C2 "Свежие и пустые аккаунты"
+
+Для каждого актора, поставившего звезду за окно:
+
+```
+fresh      = аккаунт моложе new-account-days (30)
+             (по actor.created_at, иначе по первому появлению в потоке - только при истории)
+             или нет событий, кроме звёзд, за empty-actor-days (90) - только при истории
+freshShare = |fresh| / max(n, 1)
+s2         = clamp01((freshShare - share-floor) / share-span)     # 0.3 / 0.6
+gate       = min(1, n / min-actors)                               # 10
+score      = s2 * gate
+confidence = confidence * coverage                                # 0.9 * доля акторов с данными
+```
+
+"История" - флаг `DataAvailability.actorHistory`: поток событий покрывает
+не меньше 90 дней. В PoC он `false`, а в дампах GH Archive нет даты создания
+аккаунта, поэтому на реальных данных coverage = 0, confidence = 0 и C2 не входит
+в score (`details.reason = no_actor_data`). Акторы без данных считаются не
+свежими, так что проверка не завышает score. Дату аккаунта парсер берёт из
+`actor.created_at`, если поле есть: так она приходит в демо-фикстурах.
+
+В `details`: `star_actors`, `actors_with_data`, `coverage`, `fresh_actors`,
+`new_accounts`, `empty_accounts`, `fresh_share`, `s2`, `gate`, пороги и
+`fresh_actor_sample` - до `sample-hashes` (5) обезличенных хэшей свежих акторов
+(префикс SHA-256 от `actor.id`).
 
 ### C3 «Дисбаланс звёзды/активность»
 
@@ -207,10 +242,12 @@ score      = s3 × gate
 mvn test
 ```
 
-45 тестов: парсер NDJSON, агрегатор, движок score, мок-профили, Feign-клиент
+70 тестов: парсер NDJSON, агрегатор, движок score, мок-профили, Feign-клиент
 через WireMock, контроллер, интеграционный сценарий на фикстуре, проверка
-`/v3/api-docs` и реальный C3 (формула, пороги, переключатель mock/real,
-фикстуры `star-stuffing` / `healthy-lib`). Все тесты работают офлайн.
+`/v3/api-docs`, реальный C2 (формула, история/без истории, пороги, переключатель
+mock/real, фикстуры `fresh-farm` / `organic` / `no-actor-data`) и реальный C3
+(формула, пороги, переключатель mock/real, фикстуры `star-stuffing` /
+`healthy-lib`). Все тесты работают офлайн.
 
 ## CI/CD
 
@@ -221,15 +258,16 @@ mvn test
 
 ## Ограничения PoC
 
-- проверки C1, C2, C4, C5 замоканы; C3 реальная, но по умолчанию выключена
+- проверки C1, C4, C5 замоканы; C2 и C3 реальные, но по умолчанию выключены
   (`app.scoring.mode=mock`), чтобы демо-профили давали стабильный score
   ([docs/core-plan.md](docs/core-plan.md), `CHECKS.md`);
 - GH Archive не содержит даты создания аккаунта и глобальных индексов акторов,
   поэтому `DataAvailability` в PoC фиксирует отсутствие этих блоков;
 - GH Archive отдаёт только часовые дампы большого размера: 24 часа — это
   несколько ГБ трафика, поэтому по умолчанию окно 6 часов;
-- фикстуры `demo/star-guard`, `demo/star-stuffing`, `demo/healthy-lib`
-  синтетические и сдвигаются во времени в текущее окно по самому позднему
-  событию среди всех файлов — новые фикстуры не должны выходить за
+- фикстуры `demo/star-guard`, `demo/star-stuffing`, `demo/healthy-lib`,
+  `demo/fresh-farm`, `demo/organic`, `demo/no-actor-data` синтетические и
+  сдвигаются во времени в текущее окно по самому позднему событию среди всех
+  файлов (вместе с `actor.created_at`) - новые фикстуры не должны выходить за
   `2026-11-09T02:59:30Z`, иначе сдвинутся окна существующих;
 - Kafka, Redis, SSE, trending и UI в PoC отсутствуют по плану.

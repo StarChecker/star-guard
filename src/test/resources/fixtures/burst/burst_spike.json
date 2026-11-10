@@ -1,0 +1,12 @@
+{
+  "minutes_observed": 1440,
+  "stars_24h": 42,
+  "pattern": [0],
+  "points": [
+    {"minute": 100, "stars": 1},
+    {"minute": 700, "stars": 14},
+    {"minute": 701, "stars": 13},
+    {"minute": 702, "stars": 13},
+    {"minute": 1100, "stars": 1}
+  ]
+}

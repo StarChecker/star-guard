@@ -81,6 +81,11 @@ curl "http://localhost:8080/api/v1/repos/demo/star-guard?hours=3&mock_mode=suspi
 # накрутка — 120 звёзд при 2 пушах, C3 ≈ 0.92; здоровая библиотека — C3 = 0
 curl "http://localhost:8080/api/v1/repos/demo/star-stuffing?hours=3"
 curl "http://localhost:8080/api/v1/repos/demo/healthy-lib?hours=3"
+
+# демо реального C1 (сервис запущен с --app.scoring.checks.burst.mode=real):
+# в score.checks[0].details видны начало пика, max_burst_10m и ratio
+curl "http://localhost:8080/api/v1/repos/demo/star-stuffing?hours=3"
+curl "http://localhost:8080/api/v1/repos/demo/healthy-lib?hours=3"
 ```
 
 | Метод | Путь | Описание |
@@ -159,7 +164,9 @@ RepoController → JSON (+ OpenAPI/Swagger)
 
 ## Конфигурация
 
-Основные параметры — в [application.yaml](src/main/resources/application.yaml):
+Основные параметры — в [application.yaml](src/main/resources/application.yaml).
+Параметры C1 находятся в [scoring.yaml](src/main/resources/scoring.yaml),
+который подключён через `spring.config.import`:
 
 - `app.archive.mode` — `http` или `fixture`;
 - `app.archive.default-window-hours`, `max-window-hours`, `lag-hours`;
@@ -169,7 +176,9 @@ RepoController → JSON (+ OpenAPI/Swagger)
   реализаций проверок;
 - `app.scoring.checks.<id>.mode` — точечное переопределение для одной проверки,
   по умолчанию `${app.scoring.mode:mock}`; рядом лежат её пороги
-  (`app.scoring.checks.engagement.*` для C3).
+  (`app.scoring.checks.burst.*` для C1 и `app.scoring.checks.engagement.*` для C3).
+- `app.scoring.checks.burst.enabled` — включает C1; вес, пороги ratio,
+  минимальный размер всплеска и длительность прогрева заданы в `scoring.yaml`.
 
 В коде нет магических порогов scoring: всё вынесено в конфиг.
 
@@ -182,6 +191,10 @@ RepoController → JSON (+ OpenAPI/Swagger)
 # включить только реальный C3
 java -jar target/star-guard-core-0.1.0-SNAPSHOT.jar --app.archive.mode=fixture \
   --app.scoring.checks.engagement.mode=real
+
+# включить только реальный C1 для офлайн-демо
+java -jar target/star-guard-core-0.1.0-SNAPSHOT.jar --app.archive.mode=fixture \
+  --app.scoring.checks.burst.mode=real
 
 # включить все реализованные реальные проверки
 java -jar target/star-guard-core-0.1.0-SNAPSHOT.jar --app.scoring.mode=real
@@ -221,8 +234,8 @@ mvn test
 
 ## Ограничения PoC
 
-- проверки C1, C2, C4, C5 замоканы; C3 реальная, но по умолчанию выключена
-  (`app.scoring.mode=mock`), чтобы демо-профили давали стабильный score
+- проверки C2, C4, C5 замоканы; C1 и C3 имеют реальные реализации, но по
+  умолчанию работают в режиме `mock`, чтобы демо-профили давали стабильный score
   ([docs/core-plan.md](docs/core-plan.md), `CHECKS.md`);
 - GH Archive не содержит даты создания аккаунта и глобальных индексов акторов,
   поэтому `DataAvailability` в PoC фиксирует отсутствие этих блоков;

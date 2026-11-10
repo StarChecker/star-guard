@@ -46,7 +46,7 @@ public class IndexRepoDataProvider implements RepoDataProvider {
                 .orElseThrow(() -> new RepoNotIndexedException(repo, snapshot.window()));
         TimeWindow window = snapshot.windowFor(hours);
         RepoAggregate aggregate = RepoStatsComposer.compose(
-                repo, window, indexed.hours(), clock);
+                repo, window, indexed.hours(), clock, snapshot.starIndex(window));
 
         List<Instant> missing = snapshot.missingHours().stream()
                 .filter(hour -> !hour.isBefore(window.from()) && hour.isBefore(window.to()))

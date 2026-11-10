@@ -39,6 +39,10 @@ app:
     fail-fast: false          # пропускать недоступные часы, отмечая их в ответе
     cache-ttl: 1h
     fixture-location: "classpath:fixtures/gharchive/*.jsonl"
+    star-index:               # глобальный индекс звёзд всех репозиториев окна (для C4)
+      enabled: true
+      max-pairs-per-hour: 500000  # лимит пар (репозиторий, актор) на часовой дамп — bounded memory
+      cache-hours: 48
   index:
     enabled: true             # false — вернуться к прямому сканированию GH Archive
     top-n: 1000               # сколько репозиториев попадает в индекс по звёздам за окно
@@ -76,3 +80,17 @@ app:
         stars-gate: 20                    # gate = min(1, stars / stars-gate)
         min-stars-for-confidence: 5       # меньше звёзд → confidence 0, C3 вне score
         confidence: 0.9
+      actor-overlap:                      # C4 «Пересечение акторов»
+        mode: ${app.scoring.mode:mock}    # mock | real; можно переопределить точечно
+        candidate-pool: 500               # сколько репозиториев с общими акторами сравнивать по Jaccard
+        jaccard-floor: 0.05               # Jmax <= floor → вклад Jaccard = 0
+        jaccard-span: 0.45                # Jmax >= floor + span → вклад Jaccard = 1
+        jaccard-weight: 0.5               # s4 = w·sJaccard + (1 − w)·sMulti
+        multi-repo-threshold: 3           # актор поставил звёзды >= 3 репозиториям за окно (с текущим)
+        multi-floor: 0.1
+        multi-span: 0.4
+        actors-gate: 10                   # gate = min(1, |A_r| / actors-gate)
+        min-actors-for-confidence: 5      # меньше акторов → confidence 0, C4 вне score
+        confidence: 0.8                   # × доля окна, покрытая индексом
+        truncated-penalty: 0.75           # × confidence, если индекс обрезан лимитом памяти
+        top-overlaps: 3                   # сколько пересекающихся репозиториев показать в explain

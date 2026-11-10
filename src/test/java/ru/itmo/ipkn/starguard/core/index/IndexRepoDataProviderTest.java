@@ -5,6 +5,7 @@ import ru.itmo.ipkn.starguard.core.archive.InvalidWindowException;
 import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
 import ru.itmo.ipkn.starguard.core.domain.EventCounts;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
+import ru.itmo.ipkn.starguard.core.domain.StarIndex;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 
 import java.time.Clock;
@@ -44,6 +45,44 @@ class IndexRepoDataProviderTest {
         assertThat(data.archive().hoursRequested()).isEqualTo(2);
         assertThat(data.archive().hoursLoaded()).isEqualTo(2);
         assertThat(data.archive().cached()).isTrue();
+    }
+
+    @Test
+    void passesStarIndexOfSubWindowToSnapshot() {
+        StarIndex.Builder hour08 = new StarIndex.Builder(100);
+        hour08.add("demo/star-guard", 1);
+        hour08.add("farm/other", 1);
+        StarIndex.Builder hour09 = new StarIndex.Builder(100);
+        hour09.add("demo/star-guard", 2);
+        RepoIndexSnapshot base = snapshot();
+        RepoIndexSnapshot withStars = new RepoIndexSnapshot(
+                base.window(), base.builtAt(), base.hoursLoaded(), base.missingHours(),
+                base.parseErrors(), base.repos(), Map.of(H08, hour08.build(1), H09, hour09.build(1)));
+        RepoIndex index = new RepoIndex();
+        index.swap(withStars);
+        IndexRepoDataProvider provider = new IndexRepoDataProvider(index, ARCHIVE, CLOCK);
+
+        var full = provider.load(REPO, 2).aggregate().snapshot();
+        var lastHour = provider.load(REPO, 1).aggregate().snapshot();
+
+        assertThat(full.data().crossRepoOverlap()).isTrue();
+        assertThat(full.starIndex().hoursCovered()).isEqualTo(2);
+        assertThat(full.starIndex().actors("demo/star-guard")).containsExactly(1L, 2L);
+        assertThat(full.starIndex().actors("farm/other")).containsExactly(1L);
+        assertThat(lastHour.starIndex().hoursCovered()).isEqualTo(1);
+        assertThat(lastHour.starIndex().actors("farm/other")).isEmpty();
+    }
+
+    @Test
+    void snapshotWithoutStarIndexDisablesOverlap() {
+        RepoIndex index = new RepoIndex();
+        index.swap(snapshot());
+        IndexRepoDataProvider provider = new IndexRepoDataProvider(index, ARCHIVE, CLOCK);
+
+        var snapshot = provider.load(REPO, 2).aggregate().snapshot();
+
+        assertThat(snapshot.data().crossRepoOverlap()).isFalse();
+        assertThat(snapshot.starIndex().available()).isFalse();
     }
 
     @Test

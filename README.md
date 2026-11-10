@@ -21,8 +21,10 @@
 - движок `ScoringEngine`: веса, порог confidence, ренормировка, правила усиления
   и уровни `low / medium / high / critical`, explain по каждой проверке;
 - мок-проверки C1–C5 с профилями `healthy | borderline | suspicious`;
-- реальная проверка C3 «Дисбаланс звёзды/активность», включается флагом
-  (см. [Конфигурация](#конфигурация));
+- реальные проверки C3 «Дисбаланс звёзды/активность» и C4 «Пересечение акторов»,
+  включаются флагом (см. [Конфигурация](#конфигурация));
+- глобальный индекс звёзд (`WatchEvent` всех репозиториев окна) собирается в том же
+  проходе по дампу, с лимитом памяти на час — нужен C4;
 - REST API + OpenAPI/Swagger UI;
 - офлайн-режим на фикстурах для тестов и стабильного демо;
 - кэш часовых выборок, ретраи, обработка отсутствующих часов и битых строк.
@@ -81,6 +83,12 @@ curl "http://localhost:8080/api/v1/repos/demo/star-guard?hours=3&mock_mode=suspi
 # накрутка — 120 звёзд при 2 пушах, C3 ≈ 0.92; здоровая библиотека — C3 = 0
 curl "http://localhost:8080/api/v1/repos/demo/star-stuffing?hours=3"
 curl "http://localhost:8080/api/v1/repos/demo/healthy-lib?hours=3"
+
+# демо реального C4 (--app.scoring.checks.actor-overlap.mode=real):
+# ферма из 30 аккаунтов ставит звёзды 5 репозиториям — C4 = 1.0, в explain видны
+# пересекающиеся demo/farm-*; живой репозиторий с единичными пересечениями — C4 = 0
+curl "http://localhost:8080/api/v1/repos/demo/farm-target?hours=3"
+curl "http://localhost:8080/api/v1/repos/demo/organic-app?hours=3"
 ```
 
 | Метод | Путь | Описание |
@@ -164,12 +172,14 @@ RepoController → JSON (+ OpenAPI/Swagger)
 - `app.archive.mode` — `http` или `fixture`;
 - `app.archive.default-window-hours`, `max-window-hours`, `lag-hours`;
 - `app.archive.parallelism`, `retries`, `fail-fast`, `cache-ttl`;
+- `app.archive.star-index.*` — сбор индекса звёзд для C4: `enabled`,
+  `max-pairs-per-hour` (лимит памяти), `cache-hours`;
 - `app.scoring.mock-mode`, веса проверок, усиления и пороги уровней;
 - `app.scoring.mode` — `mock` (по умолчанию) или `real`: общий переключатель
   реализаций проверок;
 - `app.scoring.checks.<id>.mode` — точечное переопределение для одной проверки,
   по умолчанию `${app.scoring.mode:mock}`; рядом лежат её пороги
-  (`app.scoring.checks.engagement.*` для C3).
+  (`app.scoring.checks.engagement.*` для C3, `app.scoring.checks.actor-overlap.*` для C4).
 
 В коде нет магических порогов scoring: всё вынесено в конфиг.
 
@@ -201,16 +211,44 @@ score      = s3 × gate
 в score (`details.reason = too_few_stars`). В `details` видны `stars`,
 `activity`, `engagement`, `s3`, `gate` и пороги.
 
+### C4 «Пересечение акторов»
+
+По событиям одного репозитория пересечение не посчитать, поэтому клиент архива
+в том же проходе по часовому дампу собирает `StarIndex`: для каждого репозитория —
+отсортированный массив уникальных акторов, поставивших звезду. Индекс кэшируется
+по часу; на час действует лимит `max-pairs-per-hour` (по умолчанию 500 000 пар),
+при превышении индекс помечается `truncated`.
+В режиме индекса топ-1000 (`app.index.enabled=true`) `StarIndex` строится
+в первом проходе `RepoIndexBuilder` и покрывает все репозитории окна, а не только
+топ-N; запрос за подокно получает индекс за его часы.
+
+```
+A_r        = акторы, поставившие звезду репозиторию за окно
+J(r, p)    = |A_r ∩ A_p| / |A_r ∪ A_p|, Jmax — по топ-N кандидатам (candidate-pool: 500)
+multiShare = доля A_r, поставивших звёзды ≥ multi-repo-threshold (3) репозиториям за окно
+s4         = 0.5·clamp01((Jmax − 0.05) / 0.45) + 0.5·clamp01((multiShare − 0.1) / 0.4)
+gate       = min(1, |A_r| / actors-gate)            # actors-gate: 10
+score      = s4 × gate
+```
+
+Кандидаты — репозитории, у которых есть хотя бы один общий актор, топ-N по числу
+общих: у остальных J = 0. Так ловятся и маленькие репозитории фермы вне глобального
+топа. Confidence = 0, если индекса нет (`reason = no_cross_repo_index`) или акторов
+меньше `min-actors-for-confidence` (5); иначе `0.8 × доля окна в индексе`
+(× 0.75, если индекс обрезан). В `details` — `jaccard_max`, `multi_share`,
+`top_overlaps` (репозиторий, Jaccard, число общих акторов), размер индекса.
+
 ## Тесты
 
 ```bash
 mvn test
 ```
 
-45 тестов: парсер NDJSON, агрегатор, движок score, мок-профили, Feign-клиент
+69 тестов: парсер NDJSON, агрегатор, движок score, мок-профили, Feign-клиент
 через WireMock, контроллер, интеграционный сценарий на фикстуре, проверка
 `/v3/api-docs` и реальный C3 (формула, пороги, переключатель mock/real,
-фикстуры `star-stuffing` / `healthy-lib`). Все тесты работают офлайн.
+фикстуры `star-stuffing` / `healthy-lib`), реальный C4 (индекс звёзд, формула,
+покрытие окна, фикстуры `farm-target` / `organic-app`). Все тесты работают офлайн.
 
 ## CI/CD
 
@@ -221,14 +259,18 @@ mvn test
 
 ## Ограничения PoC
 
-- проверки C1, C2, C4, C5 замоканы; C3 реальная, но по умолчанию выключена
+- проверки C1, C2, C5 замоканы; C3 и C4 реальные, но по умолчанию выключены
   (`app.scoring.mode=mock`), чтобы демо-профили давали стабильный score
   ([docs/core-plan.md](docs/core-plan.md), `CHECKS.md`);
-- GH Archive не содержит даты создания аккаунта и глобальных индексов акторов,
-  поэтому `DataAvailability` в PoC фиксирует отсутствие этих блоков;
+- GH Archive не содержит даты создания аккаунта и истории акторов, поэтому
+  `DataAvailability.actorHistory = false`; пересечение акторов (C4) считается
+  только в пределах окна запроса, а не за 30 дней, как в исходном плане;
+- пороги C4 откалиброваны на синтетике: на реальных дампах доля «мультизвёздных»
+  акторов у популярных репозиториев может быть заметной — `multi-floor` и
+  `multi-repo-threshold` стоит подобрать по реальному прогону;
 - GH Archive отдаёт только часовые дампы большого размера: 24 часа — это
   несколько ГБ трафика, поэтому по умолчанию окно 6 часов;
-- фикстуры `demo/star-guard`, `demo/star-stuffing`, `demo/healthy-lib`
+- фикстуры `demo/star-guard`, `demo/star-stuffing`, `demo/healthy-lib`, `demo/farm-*`, `demo/organic-app`
   синтетические и сдвигаются во времени в текущее окно по самому позднему
   событию среди всех файлов — новые фикстуры не должны выходить за
   `2026-11-09T02:59:30Z`, иначе сдвинутся окна существующих;

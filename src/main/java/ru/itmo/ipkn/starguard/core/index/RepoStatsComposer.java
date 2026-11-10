@@ -6,6 +6,7 @@ import ru.itmo.ipkn.starguard.core.domain.HourBucket;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.RepoSnapshot;
 import ru.itmo.ipkn.starguard.core.domain.RepoStats;
+import ru.itmo.ipkn.starguard.core.domain.StarIndex;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 import ru.itmo.ipkn.starguard.core.stats.RepoAggregate;
 import ru.itmo.ipkn.starguard.core.stats.StatsAggregator;
@@ -31,6 +32,19 @@ public final class RepoStatsComposer {
             TimeWindow window,
             List<RepoHourAggregate> allHours,
             Clock clock) {
+        return compose(repo, window, allHours, clock, StarIndex.empty());
+    }
+
+    /**
+     * @param starIndex индекс звёзд всех репозиториев подокна для C4; не влияет на статистику
+     */
+    public static RepoAggregate compose(
+            RepoRef repo,
+            TimeWindow window,
+            List<RepoHourAggregate> allHours,
+            Clock clock,
+            StarIndex starIndex) {
+        StarIndex index = starIndex == null ? StarIndex.empty() : starIndex;
         int hours = window.hours();
         if (allHours.size() < hours) {
             throw new IllegalArgumentException("Not enough hourly aggregates for window");
@@ -78,7 +92,8 @@ public final class RepoStatsComposer {
                 uniqueActors,
                 starActors,
                 starsByMinute,
-                DataAvailability.pocDefaults());
+                DataAvailability.pocDefaults().withCrossRepoOverlap(index.available()),
+                index);
         return new RepoAggregate(stats, snapshot);
     }
 }

@@ -10,10 +10,12 @@ import ru.itmo.ipkn.starguard.core.archive.TimeWindowCalculator;
 import ru.itmo.ipkn.starguard.core.archive.TransientArchiveException;
 import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
 import ru.itmo.ipkn.starguard.core.config.RepoIndexProperties;
+import ru.itmo.ipkn.starguard.core.config.StarIndexProperties;
 import ru.itmo.ipkn.starguard.core.domain.EventCounts;
 import ru.itmo.ipkn.starguard.core.domain.EventType;
 import ru.itmo.ipkn.starguard.core.domain.GhEvent;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
+import ru.itmo.ipkn.starguard.core.domain.StarIndex;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 
 import java.time.Clock;
@@ -35,7 +37,8 @@ import java.util.function.Function;
 
 /**
  * Строит индекс в два прохода:
- * 1) считает звёзды по репозиториям за окно и выбирает топ-N;
+ * 1) считает звёзды по репозиториям за окно и выбирает топ-N; в том же проходе
+ *    собирает почасовой {@link StarIndex} всех репозиториев для C4;
  * 2) повторно читает часы и агрегирует только выбранные репозитории.
  * Фоновый процесс; запросы пользователей идут через готовый snapshot.
  */
@@ -48,6 +51,7 @@ public class RepoIndexBuilder {
     private final TimeWindowCalculator windowCalculator;
     private final ArchiveProperties archiveProperties;
     private final RepoIndexProperties indexProperties;
+    private final StarIndexProperties starIndexProperties;
     private final Clock clock;
 
     public RepoIndexBuilder(
@@ -56,10 +60,22 @@ public class RepoIndexBuilder {
             ArchiveProperties archiveProperties,
             RepoIndexProperties indexProperties,
             Clock clock) {
+        this(bulkReader, windowCalculator, archiveProperties, indexProperties,
+                StarIndexProperties.defaults(), clock);
+    }
+
+    public RepoIndexBuilder(
+            GhArchiveBulkReader bulkReader,
+            TimeWindowCalculator windowCalculator,
+            ArchiveProperties archiveProperties,
+            RepoIndexProperties indexProperties,
+            StarIndexProperties starIndexProperties,
+            Clock clock) {
         this.bulkReader = bulkReader;
         this.windowCalculator = windowCalculator;
         this.archiveProperties = archiveProperties;
         this.indexProperties = indexProperties;
+        this.starIndexProperties = starIndexProperties;
         this.clock = clock;
     }
 
@@ -74,11 +90,15 @@ public class RepoIndexBuilder {
         List<Instant> hours = window.hourStarts();
         long startedAt = System.nanoTime();
 
-        List<HourScan<Map<String, Integer>>> starScans =
+        List<HourScan<PhaseOne>> starScans =
                 scanHours(hours, this::phaseOneHour);
         Map<String, Integer> starsByRepo = new HashMap<>();
-        for (HourScan<Map<String, Integer>> scan : starScans) {
-            scan.data().forEach((repo, stars) -> starsByRepo.merge(repo, stars, Integer::sum));
+        Map<Instant, StarIndex> starIndexByHour = new HashMap<>();
+        for (HourScan<PhaseOne> scan : starScans) {
+            scan.data().starsByRepo().forEach((repo, stars) -> starsByRepo.merge(repo, stars, Integer::sum));
+            if (scan.data().starIndex().available()) {
+                starIndexByHour.put(scan.hour(), scan.data().starIndex());
+            }
         }
 
         Set<String> candidates = TopRepoSelector.select(starsByRepo, indexProperties.topN());
@@ -131,25 +151,37 @@ public class RepoIndexBuilder {
         }
 
         RepoIndexSnapshot snapshot = new RepoIndexSnapshot(
-                window, clock.instant(), hoursLoaded, missingHours, parseErrors, repos);
+                window, clock.instant(), hoursLoaded, missingHours, parseErrors, repos, starIndexByHour);
         long millis = Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
-        log.info("Built repo index: {} repos, window={}, hoursLoaded={}, missing={}, parseErrors={}, took={} ms",
-                repos.size(), window.hours(), hoursLoaded, missingHours.size(), parseErrors, millis);
+        log.info("Built repo index: {} repos, window={}, hoursLoaded={}, missing={}, parseErrors={}, "
+                        + "starIndexHours={}, took={} ms",
+                repos.size(), window.hours(), hoursLoaded, missingHours.size(), parseErrors,
+                starIndexByHour.size(), millis);
         return snapshot;
     }
 
-    private HourScan<Map<String, Integer>> phaseOneHour(Instant hour) {
+    private HourScan<PhaseOne> phaseOneHour(Instant hour) {
         RuntimeException lastError = null;
         for (int attempt = 0; attempt <= archiveProperties.retries(); attempt++) {
             Map<String, Integer> local = new HashMap<>();
+            StarIndex.Builder starIndex = starIndexProperties.enabled()
+                    ? new StarIndex.Builder(starIndexProperties.maxPairsPerHour())
+                    : null;
             try {
                 HourReadResult result = bulkReader.readHour(hour, event -> {
                     if (event.type() == EventType.WATCH) {
                         local.merge(GhArchiveParser.normalizeFullName(event.repoFullName()),
                                 1, Integer::sum);
+                        if (starIndex != null) {
+                            starIndex.add(event.repoFullName(), event.actorId());
+                        }
                     }
                 });
-                return new HourScan<>(hour, local, result);
+                boolean loaded = !result.missing() && !result.failed();
+                StarIndex hourIndex = starIndex != null && loaded
+                        ? starIndex.build(1)
+                        : StarIndex.empty();
+                return new HourScan<>(hour, new PhaseOne(local, hourIndex), result);
             } catch (TransientArchiveException | RetryableException e) {
                 lastError = e;
                 if (attempt < archiveProperties.retries()) {
@@ -159,7 +191,8 @@ public class RepoIndexBuilder {
         }
         log.warn("Index phase 1 failed for hour {}: {}", hour,
                 lastError == null ? "unknown" : lastError.getMessage());
-        return new HourScan<>(hour, Map.of(), new HourReadResult(hour, 0, false, true));
+        return new HourScan<>(hour, new PhaseOne(Map.of(), StarIndex.empty()),
+                new HourReadResult(hour, 0, false, true));
     }
 
     private HourScan<Map<String, MutableHourAggregate>> phaseTwoHour(
@@ -238,6 +271,9 @@ public class RepoIndexBuilder {
     }
 
     private record HourScan<T>(Instant hour, T data, HourReadResult readResult) {
+    }
+
+    private record PhaseOne(Map<String, Integer> starsByRepo, StarIndex starIndex) {
     }
 
     private static final class MutableHourAggregate {

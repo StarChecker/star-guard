@@ -1,6 +1,7 @@
 package ru.itmo.ipkn.starguard.core.index;
 
 import ru.itmo.ipkn.starguard.core.archive.GhArchiveParser;
+import ru.itmo.ipkn.starguard.core.domain.StarIndex;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 
 import java.time.Duration;
@@ -18,7 +19,8 @@ public record RepoIndexSnapshot(
         int hoursLoaded,
         List<Instant> missingHours,
         int parseErrors,
-        Map<String, IndexedRepo> repos
+        Map<String, IndexedRepo> repos,
+        Map<Instant, StarIndex> starIndexByHour
 ) {
 
     public RepoIndexSnapshot {
@@ -26,6 +28,26 @@ public record RepoIndexSnapshot(
         Objects.requireNonNull(builtAt, "builtAt");
         missingHours = List.copyOf(Objects.requireNonNull(missingHours, "missingHours"));
         repos = Map.copyOf(Objects.requireNonNull(repos, "repos"));
+        starIndexByHour = starIndexByHour == null ? Map.of() : Map.copyOf(starIndexByHour);
+    }
+
+    /** Снимок без индекса звёзд: C4 в этом случае неактивна. */
+    public RepoIndexSnapshot(
+            TimeWindow window,
+            Instant builtAt,
+            int hoursLoaded,
+            List<Instant> missingHours,
+            int parseErrors,
+            Map<String, IndexedRepo> repos) {
+        this(window, builtAt, hoursLoaded, missingHours, parseErrors, repos, Map.of());
+    }
+
+    /** Индекс звёзд всех репозиториев за часы подокна (для C4). */
+    public StarIndex starIndex(TimeWindow subWindow) {
+        return StarIndex.merge(subWindow.hourStarts().stream()
+                .map(starIndexByHour::get)
+                .filter(Objects::nonNull)
+                .toList());
     }
 
     public Optional<IndexedRepo> find(String fullName) {

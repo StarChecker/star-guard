@@ -10,9 +10,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * C4 «Пересечение акторов»: ферма из одних и тех же аккаунтов ставит звёзды
@@ -70,28 +72,8 @@ public class ActorOverlapCheck implements RepoCheck {
         long[] targetActors = index.actors(targetKey);
         int actorCount = targetActors.length;
 
-        // Для каждого актора A_r — в скольких ещё репозиториях он поставил звезду;
-        // для каждого репозитория — сколько у него общих акторов с A_r.
         int[] otherRepos = new int[actorCount];
-        List<Overlap> overlaps = new ArrayList<>();
-        if (actorCount > 0) {
-            index.forEachRepo((repo, actors) -> {
-                if (repo.equals(targetKey)) {
-                    return;
-                }
-                int shared = 0;
-                for (long actor : actors) {
-                    int position = Arrays.binarySearch(targetActors, actor);
-                    if (position >= 0) {
-                        shared++;
-                        otherRepos[position]++;
-                    }
-                }
-                if (shared > 0) {
-                    overlaps.add(new Overlap(repo, shared, actors.length));
-                }
-            });
-        }
+        List<Overlap> overlaps = collectOverlaps(index, targetKey, targetActors, otherRepos);
 
         List<Overlap> candidates = overlaps.stream()
                 .sorted(Comparator.comparingInt(Overlap::shared).reversed()
@@ -156,6 +138,73 @@ public class ActorOverlapCheck implements RepoCheck {
             details.put("min_actors_for_confidence", properties.minActorsForConfidence());
         }
         return new CheckResult(id(), score, confidence, details);
+    }
+
+    /**
+     * Акторы, чьи звёзды C4 считает подозрительными (для разметки таймлайна звёзд):
+     * поставившие за окно звёзды ≥ multi-repo-threshold репозиториям и общие
+     * с репозиториями, у которых Jaccard ≥ suspicious-jaccard.
+     */
+    public Set<Long> flaggedActors(RepoSnapshot snapshot) {
+        StarIndex index = snapshot.starIndex();
+        if (!index.available()) {
+            return Set.of();
+        }
+        String targetKey = StarIndex.normalize(snapshot.repo().fullName());
+        long[] targetActors = index.actors(targetKey);
+        if (targetActors.length == 0) {
+            return Set.of();
+        }
+        int[] otherRepos = new int[targetActors.length];
+        List<Overlap> overlaps = collectOverlaps(index, targetKey, targetActors, otherRepos);
+
+        Set<Long> flagged = new HashSet<>();
+        int needOtherRepos = properties.multiRepoThreshold() - 1;
+        for (int i = 0; i < targetActors.length; i++) {
+            if (otherRepos[i] >= needOtherRepos) {
+                flagged.add(targetActors[i]);
+            }
+        }
+        for (Overlap overlap : overlaps) {
+            if (jaccard(targetActors.length, overlap) < properties.suspiciousJaccard()) {
+                continue;
+            }
+            for (long actor : index.actors(overlap.repo())) {
+                if (Arrays.binarySearch(targetActors, actor) >= 0) {
+                    flagged.add(actor);
+                }
+            }
+        }
+        return flagged;
+    }
+
+    /**
+     * Для каждого актора A_r — в скольких ещё репозиториях он поставил звезду ({@code otherRepos});
+     * для каждого репозитория — сколько у него общих акторов с A_r (результат).
+     */
+    private static List<Overlap> collectOverlaps(
+            StarIndex index, String targetKey, long[] targetActors, int[] otherRepos) {
+        List<Overlap> overlaps = new ArrayList<>();
+        if (targetActors.length == 0) {
+            return overlaps;
+        }
+        index.forEachRepo((repo, actors) -> {
+            if (repo.equals(targetKey)) {
+                return;
+            }
+            int shared = 0;
+            for (long actor : actors) {
+                int position = Arrays.binarySearch(targetActors, actor);
+                if (position >= 0) {
+                    shared++;
+                    otherRepos[position]++;
+                }
+            }
+            if (shared > 0) {
+                overlaps.add(new Overlap(repo, shared, actors.length));
+            }
+        });
+        return overlaps;
     }
 
     private static double jaccard(int targetSize, Overlap overlap) {

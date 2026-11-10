@@ -19,6 +19,8 @@ import ru.itmo.ipkn.starguard.core.scoring.CheckMode;
  * @param confidence             confidence при полном индексе за всё окно
  * @param truncatedPenalty       множитель confidence, если индекс обрезан лимитом памяти
  * @param topOverlaps            сколько пересекающихся репозиториев показывать в explain
+ * @param suspiciousJaccard      звёзды общих акторов с репозиторием, у которого Jaccard не ниже порога,
+ *                               помечаются подозрительными на таймлайне
  */
 @ConfigurationProperties(prefix = "app.scoring.checks.actor-overlap")
 public record ActorOverlapProperties(
@@ -34,7 +36,8 @@ public record ActorOverlapProperties(
         Integer minActorsForConfidence,
         Double confidence,
         Double truncatedPenalty,
-        Integer topOverlaps
+        Integer topOverlaps,
+        Double suspiciousJaccard
 ) {
 
     /** Свойство, по которому выбирается реализация C4 (реальная или мок). */
@@ -56,6 +59,7 @@ public record ActorOverlapProperties(
         confidence = confidence == null ? 0.8 : confidence;
         truncatedPenalty = truncatedPenalty == null ? 0.75 : truncatedPenalty;
         topOverlaps = topOverlaps == null ? 3 : topOverlaps;
+        suspiciousJaccard = suspiciousJaccard == null ? 0.25 : suspiciousJaccard;
 
         if (candidatePool < 1) {
             throw new IllegalArgumentException(PREFIX + "candidate-pool must be >= 1");
@@ -76,6 +80,7 @@ public record ActorOverlapProperties(
         }
         requireUnit(confidence, "confidence");
         requireUnit(truncatedPenalty, "truncated-penalty");
+        requireUnit(suspiciousJaccard, "suspicious-jaccard");
         if (topOverlaps < 0) {
             throw new IllegalArgumentException(PREFIX + "top-overlaps must be >= 0");
         }
@@ -83,7 +88,7 @@ public record ActorOverlapProperties(
 
     public static ActorOverlapProperties defaults() {
         return new ActorOverlapProperties(
-                null, null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     private static void requireUnit(double value, String name) {

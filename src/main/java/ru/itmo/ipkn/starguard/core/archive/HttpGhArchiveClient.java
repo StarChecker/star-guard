@@ -33,9 +33,9 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.GZIPInputStream;
 
 /**
@@ -96,10 +96,22 @@ public class HttpGhArchiveClient implements GhArchiveClient {
 
     @Override
     public ArchiveFetchResult fetchEvents(RepoRef repo, TimeWindow window) {
+        return fetchEvents(repo, window, ArchiveProgress.NONE);
+    }
+
+    @Override
+    public ArchiveFetchResult fetchEvents(RepoRef repo, TimeWindow window, ArchiveProgress progress) {
         List<Instant> hours = window.hourStarts();
         List<PendingHour> pending = new ArrayList<>(hours.size());
+        AtomicInteger done = new AtomicInteger();
         for (Instant hour : hours) {
-            pending.add(new PendingHour(hour, executor.submit(() -> loadHour(repo, hour))));
+            pending.add(new PendingHour(hour, executor.submit(() -> {
+                try {
+                    return loadHour(repo, hour);
+                } finally {
+                    progress.hourDone(done.incrementAndGet(), hours.size());
+                }
+            })));
         }
 
         List<HourResult> results = new ArrayList<>(hours.size());

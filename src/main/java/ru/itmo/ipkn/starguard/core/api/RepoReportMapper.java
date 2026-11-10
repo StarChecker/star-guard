@@ -7,10 +7,12 @@ import ru.itmo.ipkn.starguard.core.api.dto.HourBucketDto;
 import ru.itmo.ipkn.starguard.core.api.dto.RepoDto;
 import ru.itmo.ipkn.starguard.core.api.dto.RepoReportDto;
 import ru.itmo.ipkn.starguard.core.api.dto.ScoreDto;
+import ru.itmo.ipkn.starguard.core.api.dto.StarTimelineDto;
 import ru.itmo.ipkn.starguard.core.api.dto.StatsDto;
 import ru.itmo.ipkn.starguard.core.api.dto.WindowDto;
 import ru.itmo.ipkn.starguard.core.domain.EventCounts;
 import ru.itmo.ipkn.starguard.core.domain.RepoStats;
+import ru.itmo.ipkn.starguard.core.domain.StarTimeline;
 import ru.itmo.ipkn.starguard.core.scoring.CheckContribution;
 import ru.itmo.ipkn.starguard.core.scoring.RepoScore;
 import ru.itmo.ipkn.starguard.core.service.RepoReport;
@@ -46,10 +48,11 @@ public class RepoReportMapper {
                 new ScoreDto(
                         score.score(),
                         score.level().name().toLowerCase(Locale.ROOT),
+                        ExplainTexts.verdict(score),
                         score.confidence(),
                         score.insufficientData(),
                         score.mocked(),
-                        score.checks().stream().map(this::toCheck).toList(),
+                        score.checks().stream().map(check -> toCheck(check, stats)).toList(),
                         score.rulesApplied(),
                         score.computedAt()),
                 new ArchiveDto(
@@ -57,12 +60,15 @@ public class RepoReportMapper {
                         report.archive().hoursLoaded(),
                         report.archive().missingHours(),
                         report.archive().parseErrors(),
-                        report.archive().cached()));
+                        report.archive().cached()),
+                toTimeline(report.starsTimeline()));
     }
 
-    private CheckDto toCheck(CheckContribution contribution) {
+    private CheckDto toCheck(CheckContribution contribution, RepoStats stats) {
         return new CheckDto(
                 contribution.checkId(),
+                ExplainTexts.title(contribution.checkId()),
+                ExplainTexts.summary(contribution, stats),
                 contribution.score(),
                 contribution.confidence(),
                 contribution.weight(),
@@ -70,5 +76,16 @@ public class RepoReportMapper {
                 contribution.active(),
                 contribution.error(),
                 contribution.details());
+    }
+
+    private static StarTimelineDto toTimeline(StarTimeline timeline) {
+        return new StarTimelineDto(
+                timeline.bucketMinutes(),
+                timeline.estimated(),
+                timeline.suspiciousStars(),
+                timeline.suspiciousByCheck(),
+                timeline.points().stream()
+                        .map(point -> new StarTimelineDto.PointDto(point.at(), point.stars(), point.suspicious()))
+                        .toList());
     }
 }

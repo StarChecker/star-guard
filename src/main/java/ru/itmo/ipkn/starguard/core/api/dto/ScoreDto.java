@@ -9,6 +9,8 @@ import java.util.List;
 public record ScoreDto(
         @Schema(example = "72") int score,
         @Schema(example = "high", allowableValues = {"low", "medium", "high", "critical"}) String level,
+        @Schema(description = "Вердикт одной фразой для UI",
+                example = "Заметные признаки накрутки: главный сигнал — «пересечение аккаунтов».") String verdict,
         double confidence,
         boolean insufficientData,
         @Schema(description = "true, пока C1–C5 — моки (PoC)", example = "true") boolean mocked,

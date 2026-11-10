@@ -4,6 +4,8 @@ import ru.itmo.ipkn.starguard.core.archive.ArchiveFetchResult;
 import ru.itmo.ipkn.starguard.core.archive.InvalidWindowException;
 import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
+import ru.itmo.ipkn.starguard.core.domain.StarIndex;
+import ru.itmo.ipkn.starguard.core.domain.StarMark;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 import ru.itmo.ipkn.starguard.core.service.RepoData;
 import ru.itmo.ipkn.starguard.core.service.RepoDataProvider;
@@ -11,6 +13,7 @@ import ru.itmo.ipkn.starguard.core.stats.RepoAggregate;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 /** Отдаёт отчёт из предвычисленного индекса; вне индекса — быстрый 404. */
@@ -58,6 +61,21 @@ public class IndexRepoDataProvider implements RepoDataProvider {
                 missing,
                 snapshot.parseErrors(),
                 true);
-        return new RepoData(window, aggregate, archive);
+        return new RepoData(window, aggregate, archive, starMarks(snapshot, repo, window));
+    }
+
+    /** Звёзды подокна с точностью до часа: индекс хранит акторов по часам. */
+    private static List<StarMark> starMarks(RepoIndexSnapshot snapshot, RepoRef repo, TimeWindow window) {
+        List<StarMark> marks = new ArrayList<>();
+        for (Instant hour : window.hourStarts()) {
+            StarIndex hourIndex = snapshot.starIndexByHour().get(hour);
+            if (hourIndex == null) {
+                continue;
+            }
+            for (long actor : hourIndex.actors(repo.fullName())) {
+                marks.add(new StarMark(hour, actor, true));
+            }
+        }
+        return marks;
     }
 }

@@ -1,5 +1,6 @@
 package ru.itmo.ipkn.starguard.core.service;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveFetchResult;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveUnavailableException;
@@ -15,7 +16,10 @@ import ru.itmo.ipkn.starguard.core.scoring.ScoringEngine;
 import ru.itmo.ipkn.starguard.core.stats.RepoAggregate;
 import ru.itmo.ipkn.starguard.core.stats.StatsAggregator;
 
-/** Оркестрация PoC: архив → статистика → scoring. */
+/**
+ * Оркестрация PoC: данные из индекса (быстрый путь) или прямо из GH Archive
+ * (fixture-режим / индекс отключён) → scoring.
+ */
 @Service
 public class RepoReportService {
 
@@ -25,6 +29,7 @@ public class RepoReportService {
     private final ScoringEngine scoringEngine;
     private final ScoringProperties scoringProperties;
     private final MockModeContext mockModeContext;
+    private final ObjectProvider<RepoDataProvider> indexedDataProvider;
 
     public RepoReportService(
             GhArchiveClient archiveClient,
@@ -32,16 +37,27 @@ public class RepoReportService {
             StatsAggregator aggregator,
             ScoringEngine scoringEngine,
             ScoringProperties scoringProperties,
-            MockModeContext mockModeContext) {
+            MockModeContext mockModeContext,
+            ObjectProvider<RepoDataProvider> indexedDataProvider) {
         this.archiveClient = archiveClient;
         this.windowCalculator = windowCalculator;
         this.aggregator = aggregator;
         this.scoringEngine = scoringEngine;
         this.scoringProperties = scoringProperties;
         this.mockModeContext = mockModeContext;
+        this.indexedDataProvider = indexedDataProvider;
     }
 
     public RepoReport getReport(RepoRef repo, Integer requestedHours, MockMode requestedMockMode) {
+        RepoDataProvider indexed = indexedDataProvider.getIfAvailable();
+        if (indexed != null) {
+            return buildReport(repo, indexed.load(repo, requestedHours), requestedMockMode);
+        }
+        return getArchiveReport(repo, requestedHours, requestedMockMode);
+    }
+
+    private RepoReport getArchiveReport(
+            RepoRef repo, Integer requestedHours, MockMode requestedMockMode) {
         TimeWindow window = windowCalculator.window(requestedHours);
         ArchiveFetchResult archive = archiveClient.fetchEvents(repo, window);
 
@@ -54,13 +70,18 @@ public class RepoReportService {
         }
 
         RepoAggregate aggregate = aggregator.aggregate(repo, window, archive.events());
+        return buildReport(repo, new RepoData(window, aggregate, archive), requestedMockMode);
+    }
+
+    private RepoReport buildReport(
+            RepoRef repo, RepoData data, MockMode requestedMockMode) {
         MockMode mockMode = requestedMockMode == null
                 ? scoringProperties.mockMode()
                 : requestedMockMode;
         RepoScore score = mockModeContext.callWith(
                 mockMode,
-                () -> scoringEngine.score(aggregate.snapshot()));
-
-        return new RepoReport(repo, window, aggregate.stats(), score, archive);
+                () -> scoringEngine.score(data.aggregate().snapshot()));
+        return new RepoReport(
+                repo, data.window(), data.aggregate().stats(), score, data.archive());
     }
 }

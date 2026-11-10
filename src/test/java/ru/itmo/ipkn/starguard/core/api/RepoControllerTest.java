@@ -12,6 +12,8 @@ import ru.itmo.ipkn.starguard.core.domain.HourBucket;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.RepoStats;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
+import ru.itmo.ipkn.starguard.core.index.IndexNotReadyException;
+import ru.itmo.ipkn.starguard.core.index.RepoNotIndexedException;
 import ru.itmo.ipkn.starguard.core.scoring.CheckContribution;
 import ru.itmo.ipkn.starguard.core.scoring.RepoScore;
 import ru.itmo.ipkn.starguard.core.scoring.ScoreLevel;
@@ -66,6 +68,27 @@ class RepoControllerTest {
         mockMvc.perform(get("/api/v1/repos/demo/star-guard"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("REPO_NOT_FOUND_IN_WINDOW"));
+    }
+
+    @Test
+    void returns404WhenRepoIsNotIndexed() throws Exception {
+        RepoRef repo = new RepoRef("demo", "star-guard");
+        when(reportService.getReport(any(), any(), any()))
+                .thenThrow(new RepoNotIndexedException(repo, window()));
+
+        mockMvc.perform(get("/api/v1/repos/demo/star-guard"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("REPO_NOT_INDEXED"));
+    }
+
+    @Test
+    void returns503WhenIndexIsNotReady() throws Exception {
+        when(reportService.getReport(any(), any(), any()))
+                .thenThrow(new IndexNotReadyException());
+
+        mockMvc.perform(get("/api/v1/repos/demo/star-guard"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("INDEX_NOT_READY"));
     }
 
     @Test

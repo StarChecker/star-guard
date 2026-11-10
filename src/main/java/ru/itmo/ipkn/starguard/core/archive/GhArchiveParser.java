@@ -81,7 +81,7 @@ public class GhArchiveParser {
         return text == null || text.isBlank() ? null : text;
     }
 
-    static String normalizeFullName(String fullName) {
+    public static String normalizeFullName(String fullName) {
         return fullName == null ? "" : fullName.toLowerCase(Locale.ROOT);
     }
 }

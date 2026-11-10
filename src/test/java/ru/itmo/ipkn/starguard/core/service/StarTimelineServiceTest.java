@@ -92,6 +92,19 @@ class StarTimelineServiceTest {
     }
 
     @Test
+    void checkWithZeroScoreDoesNotMarkSingleMatches() {
+        StarIndex index = farmIndex();
+        List<StarMark> marks = List.of(new StarMark(FROM.plus(Duration.ofMinutes(15)), 1, false));
+        int[] perMinute = new int[120];
+        perMinute[15] = 1;
+        RepoScore nothingFound = new RepoScore(3, ScoreLevel.LOW, 0.8, false, List.of(new CheckContribution(
+                CheckIds.ACTOR_OVERLAP, 0.0, 0.8, 0.22, 0.0, true, null, Map.of("mocked", false))),
+                false, List.of(), Instant.EPOCH);
+
+        assertThat(service().build(snapshot(index, perMinute), nothingFound, marks).suspiciousStars()).isZero();
+    }
+
+    @Test
     void bucketGrowsWithWindow() {
         assertThat(StarTimelineService.bucketMinutes(6)).isEqualTo(10);
         assertThat(StarTimelineService.bucketMinutes(12)).isEqualTo(20);

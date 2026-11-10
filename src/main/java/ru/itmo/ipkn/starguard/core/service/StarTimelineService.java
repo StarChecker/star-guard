@@ -25,8 +25,9 @@ import java.util.TreeMap;
 /**
  * Строит таймлайн звёзд с разметкой подозрительных для графика в расширении.
  * <p>
- * Звезду помечает подозрительной реальная (не мок) и активная проверка, которая умеет
- * назвать «плохих» акторов: C4 (аккаунты фермы) и C2 (свежие/пустые аккаунты).
+ * Звезду помечает подозрительной реальная (не мок) и активная проверка с ненулевым score,
+ * которая умеет назвать «плохих» акторов: C4 (аккаунты фермы) и C2 (свежие/пустые аккаунты).
+ * Если проверка в целом ничего не нашла, единичные совпадения не подсвечиваются — это шум.
  * C1 добавится сюда, когда появится реальная реализация с минутами всплесков.
  */
 @Service
@@ -152,7 +153,7 @@ public class StarTimelineService {
     private static boolean isRealAndActive(RepoScore score, String checkId) {
         return score.checks().stream()
                 .filter(check -> check.checkId().equals(checkId))
-                .anyMatch(check -> check.active() && !isMocked(check));
+                .anyMatch(check -> check.active() && check.score() > 0 && !isMocked(check));
     }
 
     private static boolean isMocked(CheckContribution check) {

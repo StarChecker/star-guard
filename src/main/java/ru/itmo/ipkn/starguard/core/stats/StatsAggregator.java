@@ -124,7 +124,7 @@ public class StatsAggregator {
                 .toList();
     }
 
-    static int maxSlidingSum(int[] values, int windowSize) {
+    public static int maxSlidingSum(int[] values, int windowSize) {
         if (values.length == 0 || windowSize <= 0) {
             return 0;
         }

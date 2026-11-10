@@ -1,0 +1,62 @@
+package ru.itmo.ipkn.starguard.core.index;
+
+import org.junit.jupiter.api.Test;
+import ru.itmo.ipkn.starguard.core.domain.EventCounts;
+import ru.itmo.ipkn.starguard.core.domain.RepoRef;
+import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
+import ru.itmo.ipkn.starguard.core.stats.RepoAggregate;
+
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class RepoStatsComposerTest {
+
+    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-11-10T12:00:00Z"), ZoneOffset.UTC);
+    private static final RepoRef REPO = new RepoRef("demo", "star-guard");
+    private static final Instant H07 = Instant.parse("2026-11-10T07:00:00Z");
+    private static final Instant H08 = Instant.parse("2026-11-10T08:00:00Z");
+    private static final Instant H09 = Instant.parse("2026-11-10T09:00:00Z");
+    private static final TimeWindow WINDOW_2H = new TimeWindow(
+            Instant.parse("2026-11-10T08:00:00Z"),
+            Instant.parse("2026-11-10T10:00:00Z"),
+            2);
+
+    @Test
+    void composesTailHoursIntoOneReport() {
+        RepoHourAggregate hour07 = aggregate(H07, 1, 1, new int[60], 1, 1);
+        int[] minutes08 = new int[60];
+        minutes08[59] = 5;
+        RepoHourAggregate hour08 = aggregate(H08, 5, 2, minutes08, 3, 2);
+        int[] minutes09 = new int[60];
+        minutes09[0] = 5;
+        RepoHourAggregate hour09 = aggregate(H09, 5, 2, minutes09, 4, 2);
+
+        RepoAggregate aggregate = RepoStatsComposer.compose(
+                REPO, WINDOW_2H, List.of(hour07, hour08, hour09), CLOCK);
+
+        assertThat(aggregate.stats().counts().stars()).isEqualTo(10);
+        assertThat(aggregate.stats().counts().pushes()).isEqualTo(4);
+        assertThat(aggregate.stats().uniqueActors()).isEqualTo(7);
+        assertThat(aggregate.stats().starActors()).isEqualTo(4);
+        assertThat(aggregate.stats().starsByHour()).hasSize(2);
+        assertThat(aggregate.stats().peakStars10m()).isEqualTo(10);
+        assertThat(aggregate.snapshot().starsByMinute()).hasSize(120);
+        assertThat(aggregate.snapshot().starsByMinute()[59]).isEqualTo(5);
+        assertThat(aggregate.snapshot().starsByMinute()[60]).isEqualTo(5);
+        assertThat(aggregate.snapshot().window()).isEqualTo(WINDOW_2H);
+    }
+
+    private static RepoHourAggregate aggregate(
+            Instant hour, int stars, int pushes, int[] minutes, int actors, int starActors) {
+        return new RepoHourAggregate(
+                hour,
+                new EventCounts(stars + pushes, stars, 0, pushes, 0, 0, 0),
+                minutes,
+                actors,
+                starActors);
+    }
+}

@@ -11,6 +11,8 @@ servers:
 tags:
 - name: repos
   description: "Статистика репозитория и suspicious score (PoC, проверки замоканы)"
+- name: index
+  description: "Репозитории, которые можно запрашивать у сервиса"
 paths:
   /api/v1/repos/{owner}/{name}:
     get:
@@ -86,6 +88,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RepoReportDto"
+  /api/v1/index/repos:
+    get:
+      tags:
+      - index
+      summary: Топ репозиториев индекса
+      description: |
+        Возвращает репозитории, для которых сервис может отдать статистику
+        без полного сканирования GH Archive. Остальные запросы получают
+        404 REPO_NOT_INDEXED. Пока индекс строится — 503 INDEX_NOT_READY.
+      operationId: topRepos
+      parameters:
+      - name: limit
+        in: query
+        description: Сколько строк вернуть
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 1000
+          maximum: 5000
+          minimum: 1
+        example: 1000
+      responses:
+        "200":
+          description: Список доступных репозиториев
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopReposResponse"
+        "400":
+          description: Некорректный limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopReposResponse"
+        "503":
+          description: Индекс отключён или ещё строится
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopReposResponse"
 components:
   schemas:
     ArchiveDto:
@@ -272,3 +315,54 @@ components:
           type: integer
           format: int32
           example: 6
+    TopRepoDto:
+      type: object
+      description: Одна строка топа
+      properties:
+        rank:
+          type: integer
+          format: int32
+          example: 1
+        owner:
+          type: string
+          example: spring-projects
+        name:
+          type: string
+          example: spring-boot
+        fullName:
+          type: string
+          example: spring-projects/spring-boot
+        stars:
+          type: integer
+          format: int32
+          description: Звёзды за индексированное окно
+          example: 142
+    TopReposResponse:
+      type: object
+      description: "Предвычисленный топ репозиториев, доступных для запросов"
+      properties:
+        window:
+          $ref: "#/components/schemas/WindowDto"
+        builtAt:
+          type: string
+          format: date-time
+        topN:
+          type: integer
+          format: int32
+          description: Сколько репозиториев в индексе
+          example: 1000
+        hoursLoaded:
+          type: integer
+          format: int32
+        missingHours:
+          type: array
+          items:
+            type: string
+            format: date-time
+        parseErrors:
+          type: integer
+          format: int32
+        repos:
+          type: array
+          items:
+            $ref: "#/components/schemas/TopRepoDto"

@@ -1,6 +1,7 @@
 package ru.itmo.ipkn.starguard.core.stats;
 
 import org.junit.jupiter.api.Test;
+import ru.itmo.ipkn.starguard.core.domain.ActorProfile;
 import ru.itmo.ipkn.starguard.core.domain.EventCounts;
 import ru.itmo.ipkn.starguard.core.domain.EventType;
 import ru.itmo.ipkn.starguard.core.domain.GhEvent;
@@ -85,6 +86,47 @@ class StatsAggregatorTest {
         assertThat(aggregate.snapshot().data().actorHistory()).isFalse();
         assertThat(aggregate.snapshot().data().crossRepoOverlap()).isFalse();
         assertThat(aggregate.snapshot().data().globalHourProfile()).isFalse();
+    }
+
+    @Test
+    void snapshotContainsProfilesOfStarActorsOnly() {
+        Instant accountCreatedAt = Instant.parse("2026-11-01T00:00:00Z");
+        List<GhEvent> events = List.of(
+                event("1", EventType.PUSH, 1, 5),
+                new GhEvent("2", EventType.WATCH, 1L, REPO.fullName(), 1, "dev1",
+                        FROM.plusSeconds(20 * 60L), accountCreatedAt),
+                event("3", EventType.ISSUES, 1, 30),
+                event("4", EventType.WATCH, 1, 40),
+                event("5", EventType.WATCH, 2, 50),
+                event("6", EventType.PUSH, 3, 60));
+
+        List<ActorProfile> profiles = aggregator.aggregate(REPO, WINDOW, events).snapshot().starActorProfiles();
+
+        assertThat(profiles).hasSize(2);
+        assertThat(profiles).extracting(ActorProfile::actorHash)
+                .containsExactlyInAnyOrder(ActorProfile.hashOf(1), ActorProfile.hashOf(2))
+                .isSorted();
+        ActorProfile first = profiles.stream()
+                .filter(profile -> profile.actorHash().equals(ActorProfile.hashOf(1)))
+                .findFirst()
+                .orElseThrow();
+        assertThat(first.firstSeen()).isEqualTo(FROM.plusSeconds(5 * 60L));
+        assertThat(first.lastActivityAt()).isEqualTo(FROM.plusSeconds(30 * 60L));
+        assertThat(first.accountCreatedAt()).isEqualTo(accountCreatedAt);
+        ActorProfile second = profiles.stream()
+                .filter(profile -> profile.actorHash().equals(ActorProfile.hashOf(2)))
+                .findFirst()
+                .orElseThrow();
+        assertThat(second.lastActivityAt()).isNull();
+        assertThat(second.accountCreatedAt()).isNull();
+    }
+
+    @Test
+    void actorHashIsStableAndDoesNotExposeId() {
+        assertThat(ActorProfile.hashOf(12345)).isEqualTo(ActorProfile.hashOf(12345))
+                .isNotEqualTo(ActorProfile.hashOf(12346))
+                .hasSize(12)
+                .doesNotContain("12345");
     }
 
     @Test

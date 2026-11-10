@@ -93,7 +93,7 @@ public class FixtureGhArchiveClient implements GhArchiveClient {
         Duration shift = Duration.between(latest, window.to().minusSeconds(1));
 
         List<GhEvent> inWindow = fixtureEvents.stream()
-                .map(event -> event.withCreatedAt(event.createdAt().plus(shift)))
+                .map(event -> event.shiftedBy(shift))
                 .filter(event -> !event.createdAt().isBefore(window.from()))
                 .filter(event -> event.createdAt().isBefore(window.to()))
                 .toList();

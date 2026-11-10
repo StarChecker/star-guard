@@ -32,6 +32,32 @@ class GhArchiveParserTest {
         assertThat(event.actorId()).isEqualTo(7L);
         assertThat(event.actorLogin()).isEqualTo("dev");
         assertThat(event.createdAt()).isEqualTo(Instant.parse("2026-11-09T10:15:30Z"));
+        assertThat(event.actorCreatedAt()).isNull();
+    }
+
+    @Test
+    void parsesActorCreatedAtWhenPresent() {
+        String line = """
+                {"id":"4","type":"WatchEvent","repo":{"id":42,"name":"demo/star-guard"},
+                 "actor":{"id":7,"login":"dev","created_at":"2026-11-01T08:00:00Z"},
+                 "created_at":"2026-11-09T10:15:30Z"}
+                """;
+
+        assertThat(parser.parse(line).orElseThrow().actorCreatedAt())
+                .isEqualTo(Instant.parse("2026-11-01T08:00:00Z"));
+    }
+
+    @Test
+    void keepsEventWithInvalidActorCreatedAt() {
+        String line = """
+                {"id":"5","type":"WatchEvent","repo":{"id":42,"name":"demo/star-guard"},
+                 "actor":{"id":7,"login":"dev","created_at":"yesterday"},
+                 "created_at":"2026-11-09T10:15:30Z"}
+                """;
+
+        GhEvent event = parser.parse(line).orElseThrow();
+        assertThat(event.createdAt()).isEqualTo(Instant.parse("2026-11-09T10:15:30Z"));
+        assertThat(event.actorCreatedAt()).isNull();
     }
 
     @Test

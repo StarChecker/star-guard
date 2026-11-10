@@ -70,6 +70,34 @@ java -jar target/star-guard-core-0.1.0-SNAPSHOT.jar --app.archive.mode=fixture
 
 Сервис поднимается на `http://localhost:8080`.
 
+### Docker Compose
+
+Для сборки образа и запуска сервиса нужен Docker с поддержкой Compose:
+
+```bash
+docker compose up --build -d
+docker compose ps
+curl http://localhost:8080/actuator/health
+```
+
+По умолчанию Compose запускает офлайн-демо на фикстурах. Для проверки API:
+
+```bash
+curl "http://localhost:8080/api/v1/repos/demo/star-guard?hours=3&mock_mode=suspicious"
+```
+
+Для работы с реальным GH Archive запустите сервис с `APP_ARCHIVE_MODE=http`:
+
+```bash
+APP_ARCHIVE_MODE=http docker compose up --build -d
+```
+
+Внешний порт можно изменить переменной `STAR_GUARD_PORT`, например
+`STAR_GUARD_PORT=8081 docker compose up --build -d`. Для остановки используйте
+`docker compose down`. Dockerfile собирает проект на Java 25 и запускает jar
+от непривилегированного пользователя; состояние контейнера проверяется по
+`/actuator/health`.
+
 ## API
 
 ```bash

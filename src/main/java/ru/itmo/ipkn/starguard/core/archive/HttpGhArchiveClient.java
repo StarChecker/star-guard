@@ -5,6 +5,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import feign.Response;
 import feign.RetryableException;
 import jakarta.annotation.PreDestroy;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -22,7 +23,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -59,9 +59,9 @@ public class HttpGhArchiveClient implements GhArchiveClient {
     private final GhArchiveParser parser;
     private final ArchiveProperties properties;
     private final ExecutorService executor;
-    private final Cache<String, CachedHour> cache;
+    private final Cache<@NonNull String, CachedHour> cache;
     private final StarIndexProperties starIndexProperties;
-    private final Cache<Instant, StarIndex> starIndexCache;
+    private final Cache<@NonNull Instant, StarIndex> starIndexCache;
 
     public HttpGhArchiveClient(
             GhArchiveFeignClient feignClient,
@@ -177,8 +177,9 @@ public class HttpGhArchiveClient implements GhArchiveClient {
             }
         }
 
+        String repoFullName = repo.fullName();
         log.warn("GH Archive hour {} for {} failed after retries: {}",
-                hour, repo.fullName(), lastError == null ? "unknown" : lastError.getMessage());
+                hour, repoFullName, lastError == null ? "unknown" : lastError.getMessage());
         return HourResult.failed(hour);
     }
 
@@ -221,7 +222,7 @@ public class HttpGhArchiveClient implements GhArchiveClient {
                         if (starIndex != null && event.type() == EventType.WATCH) {
                             starIndex.add(event.repoFullName(), event.actorId());
                         }
-                    } catch (MalformedEventException e) {
+                    } catch (MalformedEventException _) {
                         parseErrors++;
                     }
                 }

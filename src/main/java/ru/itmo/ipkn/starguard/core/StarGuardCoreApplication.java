@@ -10,7 +10,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 @ConfigurationPropertiesScan
 public class StarGuardCoreApplication {
 
-    public static void main(String[] args) {
+    static void main(String[] args) {
         SpringApplication.run(StarGuardCoreApplication.class, args);
     }
 }

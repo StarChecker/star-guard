@@ -43,6 +43,12 @@ app:
       enabled: true
       max-pairs-per-hour: 500000  # лимит пар (репозиторий, актор) на часовой дамп — bounded memory
       cache-hours: 48
+  index:
+    enabled: true             # false — вернуться к прямому сканированию GH Archive
+    top-n: 1000               # сколько репозиториев попадает в индекс по звёздам за окно
+    window-hours: 6           # окно индекса; hours в запросе не может его превышать
+    build-on-startup: true    # фоновый прогрев; до готовности API отвечает 503 INDEX_NOT_READY
+    refresh-cron: "0 10 * * * *"   # UTC, после задержки публикации GH Archive
   scoring:
     mode: mock                # mock | real — общий переключатель реализаций C1–C5
     mock-mode: healthy        # профиль моков: healthy | borderline | suspicious (только для mock-проверок)

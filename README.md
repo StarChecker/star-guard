@@ -6,8 +6,8 @@
 
 **Star Guard Core PoC** — сервис, который по названию репозитория скачивает события
 из [GH Archive](https://www.gharchive.org/), считает статистику и прогоняет её через
-движок suspicious score. Проверки C1–C5 в PoC **замоканы** (`score.mocked = true`),
-движок, веса и explain — настоящие.
+движок suspicious score. По умолчанию проверки C1–C5 работают в режиме `mock`;
+для C1–C4 доступны реальные реализации. Движок, веса и explain — настоящие.
 
 Полный дизайн — в [docs/core-plan.md](docs/core-plan.md), OpenAPI — в
 [docs/openapi.yaml](docs/openapi.yaml).
@@ -21,8 +21,11 @@
 - движок `ScoringEngine`: веса, порог confidence, ренормировка, правила усиления
   и уровни `low / medium / high / critical`, explain по каждой проверке;
 - мок-проверки C1–C5 с профилями `healthy | borderline | suspicious`;
-- реальная проверка C3 «Дисбаланс звёзды/активность», включается флагом
-  (см. [Конфигурация](#конфигурация));
+- реальные проверки C1 «Всплеск звёзд», C2 «Свежие и пустые аккаунты»,
+  C3 «Дисбаланс звёзды/активность»
+  и C4 «Пересечение акторов», включаются флагом (см. [Конфигурация](#конфигурация));
+- глобальный индекс звёзд (`WatchEvent` всех репозиториев окна) собирается в том же
+  проходе по дампу, с лимитом памяти на час — нужен C4;
 - REST API + OpenAPI/Swagger UI;
 - офлайн-режим на фикстурах для тестов и стабильного демо;
 - кэш часовых выборок, ретраи, обработка отсутствующих часов и битых строк.
@@ -68,6 +71,34 @@ java -jar target/star-guard-core-0.1.0-SNAPSHOT.jar --app.archive.mode=fixture
 
 Сервис поднимается на `http://localhost:8080`.
 
+### Docker Compose
+
+Для сборки образа и запуска сервиса нужен Docker с поддержкой Compose:
+
+```bash
+docker compose up --build -d
+docker compose ps
+curl http://localhost:8080/actuator/health
+```
+
+По умолчанию Compose запускает офлайн-демо на фикстурах. Для проверки API:
+
+```bash
+curl "http://localhost:8080/api/v1/repos/demo/star-guard?hours=3&mock_mode=suspicious"
+```
+
+Для работы с реальным GH Archive запустите сервис с `APP_ARCHIVE_MODE=http`:
+
+```bash
+APP_ARCHIVE_MODE=http docker compose up --build -d
+```
+
+Внешний порт можно изменить переменной `STAR_GUARD_PORT`, например
+`STAR_GUARD_PORT=8081 docker compose up --build -d`. Для остановки используйте
+`docker compose down`. Dockerfile собирает проект на Java 25 и запускает jar
+от непривилегированного пользователя; состояние контейнера проверяется по
+`/actuator/health`.
+
 ## API
 
 ```bash
@@ -86,6 +117,19 @@ curl "http://localhost:8080/api/v1/repos/demo/healthy-lib?hours=3"
 # в score.checks[0].details видны начало пика, max_burst_10m и ratio
 curl "http://localhost:8080/api/v1/repos/demo/star-stuffing?hours=3"
 curl "http://localhost:8080/api/v1/repos/demo/healthy-lib?hours=3"
+
+# демо реального C2 (сервис запущен с --app.scoring.checks.fresh-accounts.mode=real):
+# ферма - 22 из 25 звёзд от аккаунтов моложе 30 дней, C2 ~ 0.97, level high;
+# органика - 10% свежих, C2 = 0; без даты создания аккаунта C2 неактивна
+curl "http://localhost:8080/api/v1/repos/demo/fresh-farm?hours=3"
+curl "http://localhost:8080/api/v1/repos/demo/organic?hours=3"
+curl "http://localhost:8080/api/v1/repos/demo/no-actor-data?hours=3"
+
+# демо реального C4 (--app.scoring.checks.actor-overlap.mode=real):
+# ферма из 30 аккаунтов ставит звёзды 5 репозиториям — C4 = 1.0, в explain видны
+# пересекающиеся demo/farm-*; живой репозиторий с единичными пересечениями — C4 = 0
+curl "http://localhost:8080/api/v1/repos/demo/farm-target?hours=3"
+curl "http://localhost:8080/api/v1/repos/demo/organic-app?hours=3"
 ```
 
 | Метод | Путь | Описание |
@@ -171,12 +215,15 @@ RepoController → JSON (+ OpenAPI/Swagger)
 - `app.archive.mode` — `http` или `fixture`;
 - `app.archive.default-window-hours`, `max-window-hours`, `lag-hours`;
 - `app.archive.parallelism`, `retries`, `fail-fast`, `cache-ttl`;
+- `app.archive.star-index.*` — сбор индекса звёзд для C4: `enabled`,
+  `max-pairs-per-hour` (лимит памяти), `cache-hours`;
 - `app.scoring.mock-mode`, веса проверок, усиления и пороги уровней;
 - `app.scoring.mode` — `mock` (по умолчанию) или `real`: общий переключатель
   реализаций проверок;
 - `app.scoring.checks.<id>.mode` — точечное переопределение для одной проверки,
   по умолчанию `${app.scoring.mode:mock}`; рядом лежат её пороги
-  (`app.scoring.checks.burst.*` для C1 и `app.scoring.checks.engagement.*` для C3).
+  (`app.scoring.checks.burst.*` для C1, `app.scoring.checks.fresh-accounts.*` для C2,
+  `app.scoring.checks.engagement.*` для C3, `app.scoring.checks.actor-overlap.*` для C4).
 - `app.scoring.checks.burst.enabled` — включает C1; вес, пороги ratio,
   минимальный размер всплеска и длительность прогрева заданы в `scoring.yaml`.
 
@@ -200,6 +247,33 @@ java -jar target/star-guard-core-0.1.0-SNAPSHOT.jar --app.archive.mode=fixture \
 java -jar target/star-guard-core-0.1.0-SNAPSHOT.jar --app.scoring.mode=real
 ```
 
+### C2 "Свежие и пустые аккаунты"
+
+Для каждого актора, поставившего звезду за окно:
+
+```
+fresh      = аккаунт моложе new-account-days (30)
+             (по actor.created_at, иначе по первому появлению в потоке - только при истории)
+             или нет событий, кроме звёзд, за empty-actor-days (90) - только при истории
+freshShare = |fresh| / max(n, 1)
+s2         = clamp01((freshShare - share-floor) / share-span)     # 0.3 / 0.6
+gate       = min(1, n / min-actors)                               # 10
+score      = s2 * gate
+confidence = confidence * coverage                                # 0.9 * доля акторов с данными
+```
+
+"История" - флаг `DataAvailability.actorHistory`: поток событий покрывает
+не меньше 90 дней. В PoC он `false`, а в дампах GH Archive нет даты создания
+аккаунта, поэтому на реальных данных coverage = 0, confidence = 0 и C2 не входит
+в score (`details.reason = no_actor_data`). Акторы без данных считаются не
+свежими, так что проверка не завышает score. Дату аккаунта парсер берёт из
+`actor.created_at`, если поле есть: так она приходит в демо-фикстурах.
+
+В `details`: `star_actors`, `actors_with_data`, `coverage`, `fresh_actors`,
+`new_accounts`, `empty_accounts`, `fresh_share`, `s2`, `gate`, пороги и
+`fresh_actor_sample` - до `sample-hashes` (5) обезличенных хэшей свежих акторов
+(префикс SHA-256 от `actor.id`).
+
 ### C3 «Дисбаланс звёзды/активность»
 
 ```
@@ -214,16 +288,46 @@ score      = s3 × gate
 в score (`details.reason = too_few_stars`). В `details` видны `stars`,
 `activity`, `engagement`, `s3`, `gate` и пороги.
 
+### C4 «Пересечение акторов»
+
+По событиям одного репозитория пересечение не посчитать, поэтому клиент архива
+в том же проходе по часовому дампу собирает `StarIndex`: для каждого репозитория —
+отсортированный массив уникальных акторов, поставивших звезду. Индекс кэшируется
+по часу; на час действует лимит `max-pairs-per-hour` (по умолчанию 500 000 пар),
+при превышении индекс помечается `truncated`.
+В режиме индекса топ-1000 (`app.index.enabled=true`) `StarIndex` строится
+в первом проходе `RepoIndexBuilder` и покрывает все репозитории окна, а не только
+топ-N; запрос за подокно получает индекс за его часы.
+
+```
+A_r        = акторы, поставившие звезду репозиторию за окно
+J(r, p)    = |A_r ∩ A_p| / |A_r ∪ A_p|, Jmax — по топ-N кандидатам (candidate-pool: 500)
+multiShare = доля A_r, поставивших звёзды ≥ multi-repo-threshold (3) репозиториям за окно
+s4         = 0.5·clamp01((Jmax − 0.05) / 0.45) + 0.5·clamp01((multiShare − 0.1) / 0.4)
+gate       = min(1, |A_r| / actors-gate)            # actors-gate: 10
+score      = s4 × gate
+```
+
+Кандидаты — репозитории, у которых есть хотя бы один общий актор, топ-N по числу
+общих: у остальных J = 0. Так ловятся и маленькие репозитории фермы вне глобального
+топа. Confidence = 0, если индекса нет (`reason = no_cross_repo_index`) или акторов
+меньше `min-actors-for-confidence` (5); иначе `0.8 × доля окна в индексе`
+(× 0.75, если индекс обрезан). В `details` — `jaccard_max`, `multi_share`,
+`top_overlaps` (репозиторий, Jaccard, число общих акторов), размер индекса.
+
 ## Тесты
 
 ```bash
 mvn test
 ```
 
-45 тестов: парсер NDJSON, агрегатор, движок score, мок-профили, Feign-клиент
+Тесты покрывают парсер NDJSON, агрегатор, движок score, мок-профили, Feign-клиент
 через WireMock, контроллер, интеграционный сценарий на фикстуре, проверка
-`/v3/api-docs` и реальный C3 (формула, пороги, переключатель mock/real,
-фикстуры `star-stuffing` / `healthy-lib`). Все тесты работают офлайн.
+`/v3/api-docs`, индекс топ-1000, реальный C2 (формула, история/без истории, пороги,
+переключатель mock/real, фикстуры `fresh-farm` / `organic` / `no-actor-data`),
+реальный C3 (формула, пороги, фикстуры `star-stuffing` / `healthy-lib`) и реальный C4
+(индекс звёзд, формула, покрытие окна, фикстуры `farm-target` / `organic-app`).
+Все тесты работают офлайн.
 
 ## CI/CD
 
@@ -234,15 +338,20 @@ mvn test
 
 ## Ограничения PoC
 
-- проверки C2, C4, C5 замоканы; C1 и C3 имеют реальные реализации, но по
-  умолчанию работают в режиме `mock`, чтобы демо-профили давали стабильный score
+- C5 замокана; C1–C4 имеют реальные реализации, но по умолчанию работают в режиме `mock`
+  (`app.scoring.mode=mock`), чтобы демо-профили давали стабильный score
   ([docs/core-plan.md](docs/core-plan.md), `CHECKS.md`);
-- GH Archive не содержит даты создания аккаунта и глобальных индексов акторов,
-  поэтому `DataAvailability` в PoC фиксирует отсутствие этих блоков;
+- GH Archive не содержит даты создания аккаунта и истории акторов, поэтому
+  `DataAvailability.actorHistory = false`; пересечение акторов (C4) считается
+  только в пределах окна запроса, а не за 30 дней, как в исходном плане;
+- пороги C4 откалиброваны на синтетике: на реальных дампах доля «мультизвёздных»
+  акторов у популярных репозиториев может быть заметной — `multi-floor` и
+  `multi-repo-threshold` стоит подобрать по реальному прогону;
 - GH Archive отдаёт только часовые дампы большого размера: 24 часа — это
   несколько ГБ трафика, поэтому по умолчанию окно 6 часов;
-- фикстуры `demo/star-guard`, `demo/star-stuffing`, `demo/healthy-lib`
-  синтетические и сдвигаются во времени в текущее окно по самому позднему
-  событию среди всех файлов — новые фикстуры не должны выходить за
-  `2026-11-09T02:59:30Z`, иначе сдвинутся окна существующих;
+- фикстуры `demo/star-guard`, `demo/star-stuffing`, `demo/healthy-lib`,
+  `demo/fresh-farm`, `demo/organic`, `demo/no-actor-data`, `demo/farm-*`,
+  `demo/organic-app` синтетические и сдвигаются во времени в текущее окно по самому
+  позднему событию среди всех файлов (вместе с `actor.created_at`). Новые фикстуры
+  не должны выходить за `2026-11-09T02:59:30Z`, иначе сдвинутся окна существующих;
 - Kafka, Redis, SSE, trending и UI в PoC отсутствуют по плану.

@@ -44,10 +44,8 @@ public class GhArchiveParser {
             return Optional.empty();
         }
 
-        Instant createdAt;
-        try {
-            createdAt = Instant.parse(createdAtText);
-        } catch (DateTimeParseException e) {
+        Instant createdAt = instant(createdAtText);
+        if (createdAt == null) {
             return Optional.empty();
         }
 
@@ -58,7 +56,19 @@ public class GhArchiveParser {
                 repoName,
                 actorId,
                 text(actor, "login"),
-                createdAt));
+                createdAt,
+                instant(text(actor, "created_at"))));
+    }
+
+    private static Instant instant(String text) {
+        if (text == null) {
+            return null;
+        }
+        try {
+            return Instant.parse(text);
+        } catch (DateTimeParseException e) {
+            return null;
+        }
     }
 
     private static EventType mapType(String type) {
@@ -81,7 +91,7 @@ public class GhArchiveParser {
         return text == null || text.isBlank() ? null : text;
     }
 
-    static String normalizeFullName(String fullName) {
+    public static String normalizeFullName(String fullName) {
         return fullName == null ? "" : fullName.toLowerCase(Locale.ROOT);
     }
 }

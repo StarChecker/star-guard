@@ -1,5 +1,6 @@
 package ru.itmo.ipkn.starguard.core.domain;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 
@@ -11,7 +12,8 @@ public record GhEvent(
         String repoFullName,
         long actorId,
         String actorLogin,
-        Instant createdAt
+        Instant createdAt,
+        Instant actorCreatedAt
 ) {
 
     public GhEvent {
@@ -22,7 +24,20 @@ public record GhEvent(
         actorLogin = actorLogin == null ? "" : actorLogin;
     }
 
-    public GhEvent withCreatedAt(Instant newCreatedAt) {
-        return new GhEvent(eventId, type, repoId, repoFullName, actorId, actorLogin, newCreatedAt);
+    public GhEvent(
+            String eventId,
+            EventType type,
+            long repoId,
+            String repoFullName,
+            long actorId,
+            String actorLogin,
+            Instant createdAt) {
+        this(eventId, type, repoId, repoFullName, actorId, actorLogin, createdAt, null);
+    }
+
+    public GhEvent shiftedBy(Duration shift) {
+        return new GhEvent(eventId, type, repoId, repoFullName, actorId, actorLogin,
+                createdAt.plus(shift),
+                actorCreatedAt == null ? null : actorCreatedAt.plus(shift));
     }
 }

@@ -25,7 +25,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
+@SpringBootTest(properties = "app.index.enabled=false")
 class HttpGhArchiveClientTest {
 
     private static final WireMockServer WIRE_MOCK = new WireMockServer(options().dynamicPort());
@@ -111,6 +111,39 @@ class HttpGhArchiveClientTest {
         assertThat(second.events()).hasSize(3);
         assertThat(second.cached()).isTrue();
         WIRE_MOCK.verify(1, getRequestedFor(urlEqualTo("/2026-11-09-0.json.gz")));
+    }
+
+    @Test
+    void collectsStarIndexOfAllRepositoriesInSamePass() throws IOException {
+        TimeWindow window = new TimeWindow(
+                Instant.parse("2026-11-08T00:00:00Z"), Instant.parse("2026-11-08T02:00:00Z"), 2);
+        WIRE_MOCK.stubFor(get(urlEqualTo("/2026-11-08-0.json.gz"))
+                .willReturn(aResponse().withStatus(200).withBody(gzip("""
+                        {"id":"11","type":"WatchEvent","repo":{"id":1,"name":"demo/a"},"actor":{"id":1,"login":"u1"},"created_at":"2026-11-08T00:01:00Z"}
+                        {"id":"12","type":"WatchEvent","repo":{"id":1,"name":"demo/a"},"actor":{"id":2,"login":"u2"},"created_at":"2026-11-08T00:02:00Z"}
+                        {"id":"13","type":"WatchEvent","repo":{"id":2,"name":"Other/B"},"actor":{"id":1,"login":"u1"},"created_at":"2026-11-08T00:03:00Z"}
+                        {"id":"14","type":"PushEvent","repo":{"id":3,"name":"other/c"},"actor":{"id":3,"login":"u3"},"created_at":"2026-11-08T00:04:00Z"}
+                        """))));
+        WIRE_MOCK.stubFor(get(urlEqualTo("/2026-11-08-1.json.gz"))
+                .willReturn(aResponse().withStatus(200).withBody(gzip("""
+                        {"id":"15","type":"WatchEvent","repo":{"id":2,"name":"other/b"},"actor":{"id":2,"login":"u2"},"created_at":"2026-11-08T01:01:00Z"}
+                        {"id":"16","type":"WatchEvent","repo":{"id":2,"name":"other/b"},"actor":{"id":1,"login":"u1"},"created_at":"2026-11-08T01:02:00Z"}
+                        {"id":"17","type":"ForkEvent","repo":{"id":1,"name":"demo/a"},"actor":{"id":4,"login":"u4"},"created_at":"2026-11-08T01:03:00Z"}
+                        """))));
+
+        ArchiveFetchResult first = client.fetchEvents(new RepoRef("demo", "a"), window);
+        ArchiveFetchResult second = client.fetchEvents(new RepoRef("demo", "a"), window);
+
+        assertThat(first.events()).extracting(GhEvent::eventId).containsExactly("11", "12", "17");
+        for (ArchiveFetchResult result : java.util.List.of(first, second)) {
+            assertThat(result.starIndex().available()).isTrue();
+            assertThat(result.starIndex().hoursCovered()).isEqualTo(2);
+            assertThat(result.starIndex().truncated()).isFalse();
+            assertThat(result.starIndex().actors("demo/a")).containsExactly(1L, 2L);
+            assertThat(result.starIndex().actors("other/b")).containsExactly(1L, 2L);
+            assertThat(result.starIndex().actors("other/c")).isEmpty();
+        }
+        assertThat(second.cached()).isTrue();
     }
 
     private static byte[] gzip(String content) throws IOException {

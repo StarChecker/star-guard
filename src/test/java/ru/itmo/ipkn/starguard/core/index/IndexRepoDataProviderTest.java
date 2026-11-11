@@ -28,7 +28,7 @@ class IndexRepoDataProviderTest {
     private static final RepoRef REPO = new RepoRef("demo", "star-guard");
     private static final ArchiveProperties ARCHIVE = new ArchiveProperties(
             "https://example.test", ArchiveProperties.Mode.HTTP,
-            6, 24, 2, 4, 0, false, Duration.ofHours(1), null);
+            6, 24, 2, 4, 0, false, Duration.ofHours(1), null, null);
 
     @Test
     void composesRequestedSubWindow() {

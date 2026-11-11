@@ -207,6 +207,12 @@ RepoController → JSON (+ OpenAPI/Swagger)
 - `app.archive.mode` — `http` или `fixture`;
 - `app.archive.default-window-hours`, `max-window-hours`, `lag-hours`;
 - `app.archive.parallelism`, `retries`, `fail-fast`, `cache-ttl`;
+- `app.archive.window-end` (env `APP_ARCHIVE_WINDOW_END`) - фиксированный конец окна
+  вместо "сейчас минус lag", например `2024-11-10T15:00:00Z`. С конца октября 2026
+  в GH Archive около 3 тысяч событий в час и нет пушей
+  ([gharchive.org#326](https://github.com/igrigorik/gharchive.org/issues/326)), поэтому для
+  демо на реальных данных берите дату до мая 2025. С фиксированным окном индекс
+  строится один раз и по cron не пересобирается;
 - `app.archive.star-index.*` — сбор индекса звёзд для C4: `enabled`,
   `max-pairs-per-hour` (лимит памяти), `cache-hours`;
 - `app.scoring.mock-mode`, веса проверок, усиления и пороги уровней;

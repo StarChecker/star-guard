@@ -35,7 +35,7 @@ class RepoIndexBuilderTest {
 
     private static final ArchiveProperties ARCHIVE = new ArchiveProperties(
             "https://example.test", ArchiveProperties.Mode.HTTP,
-            6, 24, 2, 4, 0, false, Duration.ofHours(1), null);
+            6, 24, 2, 4, 0, false, Duration.ofHours(1), null, null);
     private static final RepoIndexProperties INDEX = new RepoIndexProperties(
             true, 2, 3, false, "0 10 * * * *");
 

@@ -20,9 +20,23 @@
     onOpenOptions: () => chrome.runtime.openOptionsPage(),
   };
 
+  let preview = null;
+  let previewRequested = false;
+
   function render(state) {
-    UI.renderCard(shadow, state, actions);
+    const waiting = ['not_indexed', 'no_data', 'scanning', 'index_not_ready'].includes(state.kind);
+    if (waiting && !previewRequested) {
+      previewRequested = true;
+      send({ type: 'preview', repo }).then((response) => {
+        if (!response.ok) return;
+        preview = response.data;
+        render(lastState);
+      });
+    }
+    lastState = state;
+    UI.renderCard(shadow, waiting && preview ? { ...state, preview } : state, actions);
   }
+  let lastState = { kind: 'loading' };
 
   function toState(response) {
     if (response.ok) return { kind: 'report', data: response.data };

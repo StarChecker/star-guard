@@ -17,6 +17,8 @@
 
   let currentRepo = null;
   let cardState = { kind: 'loading' };
+  let repoPreview = null;      // F5: базовая статистика GitHub, пока нет оценки
+  let previewRequested = null; // для какого репозитория уже запрошен preview
   let settings = { hours: 6, listDots: true };
   let scanTimer = null;
   let floatingOpen = false;   // плавающая панель открыта значком
@@ -265,13 +267,29 @@
       });
     }
     if (card) {
-      UI.renderCard(card.shadowRoot, cardState, actions);
+      UI.renderCard(card.shadowRoot, withPreview(), actions);
     }
     if (floating) {
       const show = badge ? floatingOpen : !floatingClosed;
       floating.style.display = show ? 'block' : 'none';
-      UI.renderCard(floating.shadowRoot, cardState, actions, { floating: true });
+      UI.renderCard(floating.shadowRoot, withPreview(), actions, { floating: true });
     }
+  }
+
+  /** Пока оценки нет, подмешиваем в карточку preview GitHub (запрашивается один раз на репозиторий). */
+  function withPreview() {
+    const waiting = ['not_indexed', 'no_data', 'scanning', 'index_not_ready'].includes(cardState.kind);
+    if (!waiting || !currentRepo) return cardState;
+    if (previewRequested !== currentRepo) {
+      previewRequested = currentRepo;
+      const repo = currentRepo;
+      send({ type: 'preview', repo }).then((response) => {
+        if (repo !== currentRepo || !response.ok) return;
+        repoPreview = response.data;
+        renderRepo();
+      });
+    }
+    return repoPreview ? { ...cardState, preview: repoPreview } : cardState;
   }
 
   function removeRepoUi() {
@@ -342,6 +360,8 @@
       clearTimeout(scanTimer);
       if (repo !== currentRepo) {
         removeRepoUi();
+        repoPreview = null;
+        previewRequested = null;
         floatingOpen = false;
         floatingClosed = false;
         currentRepo = repo;

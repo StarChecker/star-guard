@@ -73,7 +73,7 @@
 
 .section { margin-top: 16px; }
 .section-title {
-  display: flex; justify-content: space-between; align-items: baseline;
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
   font-weight: 600; margin-bottom: 6px;
 }
 .section-title .aside { font-weight: 400; color: var(--sg-muted); }
@@ -194,6 +194,17 @@ details.evidence[open] summary::before { content: '▾ '; }
     return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   }
 
+  function day(iso) {
+    return new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' });
+  }
+
+  function windowLabel(hours) {
+    if (!hours) return '';
+    if (hours <= 48) return `${hours} ч`;
+    const days = Math.round(hours / 24);
+    return `${days} ${plural(days, 'день', 'дня', 'дней')}`;
+  }
+
   function scoreColor(score01) {
     if (score01 >= 0.8) return 'var(--sg-danger)';
     if (score01 >= 0.6) return 'var(--sg-severe)';
@@ -265,7 +276,8 @@ details.evidence[open] summary::before { content: '▾ '; }
       const hit = s('rect', { class: 'hit', x, y: top, width: step, height: plotH });
       hit.addEventListener('mouseenter', (event) => {
         const end = new Date(new Date(p.at).getTime() + tl.bucket_minutes * 60000).toISOString();
-        tooltip.textContent = `${time(p.at)}–${time(end)}: ${stars(p.stars)}` +
+        const span = tl.bucket_minutes >= 360 ? `${day(p.at)} ${time(p.at)}–${time(end)}` : `${time(p.at)}–${time(end)}`;
+        tooltip.textContent = `${span}: ${stars(p.stars)}` +
           (p.suspicious ? `, подозрительных ${p.suspicious}` : '');
         tooltip.style.display = 'block';
         move(event);
@@ -280,7 +292,8 @@ details.evidence[open] summary::before { content: '▾ '; }
       const i = Math.round((t * (points.length - 1)) / Math.max(1, ticks - 1));
       const anchor = t === 0 ? 'start' : t === ticks - 1 ? 'end' : 'middle';
       const x = t === ticks - 1 ? W : left + i * step + step / 2;
-      svg.append(s('text', { class: 'axis', x, y: H - 3, 'text-anchor': anchor }, time(points[i].at)));
+      const label = tl.bucket_minutes >= 60 ? day(points[i].at) : time(points[i].at);
+      svg.append(s('text', { class: 'axis', x, y: H - 3, 'text-anchor': anchor }, label));
     }
 
     function move(event) {
@@ -291,7 +304,7 @@ details.evidence[open] summary::before { content: '▾ '; }
     const share = report.stats.stars ? Math.round((tl.suspicious_stars / report.stats.stars) * 100) : 0;
     return h('div', { class: 'section' },
       h('div', { class: 'section-title' },
-        h('span', {}, 'Звёзды за ' + report.window.hours + ' ч'),
+        h('span', {}, 'Звёзды за ' + windowLabel(report.window.hours)),
         h('span', { class: 'aside' }, `${report.stats.stars} · подозрительных ${tl.suspicious_stars} (${share}%)`)),
       svg,
       tooltip,
@@ -357,7 +370,7 @@ details.evidence[open] summary::before { content: '▾ '; }
   function header(hours, floating, onClose) {
     return h('div', { class: 'head' },
       h('h2', {}, logo(), 'Star Guard'),
-      h('span', { class: 'window' }, hours ? `за ${hours} ч` : '',
+      h('span', { class: 'window' }, hours ? `за ${windowLabel(hours)}` : '',
         floating && onClose ? h('button', { style: 'margin-left: 8px; padding: 0 6px', title: 'Скрыть', onclick: onClose }, '×') : null));
   }
 
@@ -377,11 +390,23 @@ details.evidence[open] summary::before { content: '▾ '; }
       checks(report),
       evidence(report),
       h('div', { class: 'footer' },
-        `Данные GH Archive, ${time(report.window.from)}–${time(report.window.to)}.`,
+        sourceText(report),
         missing ? h('span', { class: 'warn' }, ` Пропущено часов: ${missing}.`) : null,
         mockedCount ? ` Проверок в демо-режиме: ${mockedCount}.` : null,
         ' Это оценка признаков, а не доказательство накрутки.'),
     ];
+  }
+
+  function sourceText(report) {
+    const source = report.source || {};
+    if (source.type === 'github_api') {
+      const sampled = source.stars_sampled || report.stats.stars;
+      const total = source.stars_total;
+      return `История GitHub с ${day(report.window.from)}: ${stars(sampled)}` +
+        (total && total > sampled ? ` из ${total}` : '') + '. Пересечение аудиторий в этом режиме не считается.';
+    }
+    const where = source.type === 'gh_archive_index' ? 'индекс GH Archive' : 'GH Archive';
+    return `Данные: ${where}, ${time(report.window.from)}–${time(report.window.to)}.`;
   }
 
   function stateView(state, actions) {
@@ -397,19 +422,29 @@ details.evidence[open] summary::before { content: '▾ '; }
         ];
       case 'not_indexed':
         return [h('div', { class: 'state' },
-          h('p', {}, `Репозиторий не входит в топ-1000 по звёздам за последние ${state.hours} ч, готовой оценки нет.`),
-          h('p', {}, 'Можно проверить его напрямую по GH Archive — это займёт 1–3 минуты.'),
+          h('p', {}, `Готовой оценки нет: репозиторий не входит в топ-1000 по звёздам за последние ${state.hours} ч.`),
+          h('p', {}, 'Star Guard проверит его по истории звёзд GitHub за 30 дней — обычно это несколько секунд.'),
           h('button', { class: 'primary', onclick: actions.onScan }, 'Проверить'))];
       case 'scanning': {
         const pct = state.total ? Math.round((state.done / state.total) * 100) : 0;
+        const github = state.source === 'github';
         return [h('div', { class: 'state' },
-          h('p', {}, 'Проверяем по GH Archive…'),
+          h('p', {}, github ? 'Загружаем историю звёзд с GitHub…' : 'Проверяем по GH Archive…'),
           h('div', { class: 'progress' }, h('span', { style: `width: ${Math.max(4, pct)}%` })),
-          h('div', { class: 'note' }, `Обработано часов архива: ${state.done} из ${state.total}. Можно уйти со страницы — результат сохранится.`))];
+          h('div', { class: 'note' }, (github ? `Загружено страниц: ${state.done} из ${state.total}.` : `Обработано часов архива: ${state.done} из ${state.total}.`) +
+            ' Можно уйти со страницы — результат сохранится.'))];
       }
       case 'no_data':
         return [h('div', { class: 'state' },
-          h('p', {}, `За последние ${state.hours} ч у репозитория не было событий в GH Archive — оценивать нечего.`))];
+          h('p', {}, `За последние ${windowLabel(state.hours)} у репозитория не было ни звёзд, ни других публичных событий — оценивать нечего.`),
+          h('p', {}, 'Для небольших проектов это нормально. Накрутка видна по всплеску звёзд, поэтому стоит смотреть окно, где они были.'),
+          state.hours < 24 && actions.onScanDay
+            ? h('button', { class: 'primary', onclick: actions.onScanDay }, 'Проверить за 24 ч')
+            : null)];
+      case 'gone':
+        return [h('div', { class: 'state' },
+          h('p', {}, 'Репозитория нет на GitHub: он удалён или скрыт.'),
+          h('p', {}, 'Так часто заканчивают репозитории накрутки — GitHub удаляет их вместе с бот-аккаунтами.'))];
       case 'index_not_ready':
         return [h('div', { class: 'state' },
           h('p', {}, 'Сервер прогревает индекс популярных репозиториев. Обычно это пара минут.'),
@@ -478,5 +513,35 @@ details.evidence[open] summary::before { content: '▾ '; }
     return dot;
   }
 
-  window.StarGuardUI = { renderCard, renderBadge, listDot, STYLES, LEVELS };
+  /** Список репозиториев индекса с оценкой — для popup на страницах без репозитория. */
+  function renderTop(shadowRoot, state, onOpen) {
+    let body;
+    if (state.kind === 'loading') {
+      body = [h('div', { class: 'skeleton', style: 'height: 120px' })];
+    } else if (state.kind === 'error') {
+      body = [h('div', { class: 'state' }, h('p', {}, state.message || 'Не удалось получить список.'))];
+    } else {
+      const rows = state.data.repos || [];
+      body = [
+        h('p', { class: 'state', style: 'margin: 0 0 8px' },
+          `Популярные по звёздам за ${windowLabel(state.data.window.hours)}, только существующие на GitHub` +
+          (state.data.skipped_deleted ? ` (удалённых пропущено: ${state.data.skipped_deleted})` : '') + '.'),
+        h('ul', { class: 'evidence-list' }, rows.map((row) => {
+          const level = LEVELS[row.level] || null;
+          return h('li', {},
+            h('span', {},
+              h('span', { class: 'list-dot', style: `background: ${level ? level.color : 'var(--sg-neutral)'}`,
+                title: row.verdict || '' }),
+              h('a', { href: 'https://github.com/' + encodeURI(row.full_name), target: '_blank', rel: 'noopener',
+                onclick: (event) => { if (onOpen) { event.preventDefault(); onOpen(row.full_name); } } }, row.full_name)),
+            h('span', { class: 'num' }, `★ ${row.stars}` + (row.score === null || row.score === undefined ? '' : ` · ${row.score}`)));
+        })),
+        rows.length === 0 ? h('p', { class: 'state' }, 'Пока пусто: индекс ещё строится или фильтр слишком строгий.') : null,
+      ];
+    }
+    shadowRoot.replaceChildren(h('style', {}, STYLES),
+      h('div', { class: 'sg card' }, header(null, false), ...body));
+  }
+
+  window.StarGuardUI = { renderCard, renderBadge, listDot, renderTop, STYLES, LEVELS };
 })();

@@ -36,7 +36,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "app.index.build-on-startup=false",
         "app.index.window-hours=3",
         "app.index.top-n=2",
-        "app.archive.default-window-hours=3"
+        "app.archive.default-window-hours=3",
+        // тест офлайн: без проверки существования репозиториев на github.com
+        "app.github.history.existence-check=false"
 })
 @AutoConfigureMockMvc
 class IndexedCoreIntegrationTest {

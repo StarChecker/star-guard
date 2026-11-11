@@ -47,7 +47,7 @@ public class StarTimelineService {
         TimeWindow window = snapshot.window();
         int bucketMinutes = bucketMinutes(window.hours());
         int totalMinutes = window.hours() * 60;
-        int buckets = totalMinutes / bucketMinutes;
+        int buckets = (totalMinutes + bucketMinutes - 1) / bucketMinutes;
 
         int[] starsPerBucket = new int[buckets];
         int[] perMinute = snapshot.starsByMinute();
@@ -117,7 +117,20 @@ public class StarTimelineService {
         if (hours <= 12) {
             return 20;
         }
-        return 30;
+        if (hours <= 24) {
+            return 30;
+        }
+        // длинные окна истории GitHub: не больше ~70–120 точек на графике
+        if (hours <= 72) {
+            return 60;
+        }
+        if (hours <= 168) {
+            return 180;
+        }
+        if (hours <= 360) {
+            return 360;
+        }
+        return 720;
     }
 
     private Map<Long, Set<String>> flaggedActors(

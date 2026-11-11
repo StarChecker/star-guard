@@ -3,6 +3,7 @@ package ru.itmo.ipkn.starguard.core.index;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveFetchResult;
 import ru.itmo.ipkn.starguard.core.archive.InvalidWindowException;
 import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
+import ru.itmo.ipkn.starguard.core.domain.DataSource;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.StarIndex;
 import ru.itmo.ipkn.starguard.core.domain.StarMark;
@@ -62,7 +63,7 @@ public class IndexRepoDataProvider implements RepoDataProvider {
                 snapshot.parseErrors(),
                 true);
         return new RepoData(window, aggregate, archive, snapshot.rank(repo.fullName()),
-                starMarks(snapshot, repo, window));
+                starMarks(snapshot, repo, window), DataSource.index());
     }
 
     /** Звёзды подокна с точностью до часа: индекс хранит акторов по часам. */

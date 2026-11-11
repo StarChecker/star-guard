@@ -7,4 +7,7 @@ services:
     environment:
       APP_ARCHIVE_MODE: "${APP_ARCHIVE_MODE:-fixture}"
       APP_SCORING_MODE: "${APP_SCORING_MODE:-mock}"
+      # токен GitHub: анализ любого репозитория по истории и возраст аккаунтов (C2)
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      APP_GITHUB_ENABLED: "${APP_GITHUB_ENABLED:-false}"
     restart: unless-stopped

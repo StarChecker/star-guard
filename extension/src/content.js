@@ -67,6 +67,8 @@
         return { kind: 'not_indexed', hours };
       case 'REPO_NOT_FOUND_IN_WINDOW':
         return { kind: 'no_data', hours };
+      case 'REPO_NOT_FOUND_ON_GITHUB':
+        return { kind: 'gone', hours };
       case 'INDEX_NOT_READY':
         return { kind: 'index_not_ready', hours };
       default:
@@ -99,12 +101,16 @@
     }
   }
 
-  async function startScan() {
+  async function startScan(requestedHours) {
     const repo = currentRepo;
-    const hours = settings.hours;
+    const hours = requestedHours || settings.hours;
     cardState = { kind: 'scanning', done: 0, total: hours, hours };
     renderRepo();
     const response = await send({ type: 'scanStart', repo, hours });
+    if (response.ok) {
+      cardState = { kind: 'scanning', done: 0, total: response.data.hours_total, hours, source: response.data.source };
+      renderRepo();
+    }
     if (!response.ok) {
       cardState = stateFromResponse(response, hours);
       renderRepo();
@@ -118,7 +124,8 @@
     followScan(repo, response.data.id, hours);
   }
 
-  function followScan(repo, id, hours) {
+  function followScan(repo, id, scanHours) {
+    let hours = scanHours;
     clearTimeout(scanTimer);
     const tick = async () => {
       if (repo !== currentRepo) return;
@@ -131,6 +138,8 @@
         return;
       }
       const scan = response.data;
+      // для истории GitHub шаги — это страницы, а окно — 30 дней
+      hours = scan.source === 'github' ? 720 : (scan.hours_total || hours);
       if (scan.status === 'done') {
         await forgetScan(repo);
         cardState = { kind: 'report', data: scan.report };
@@ -138,7 +147,7 @@
         await forgetScan(repo);
         cardState = stateFromResponse({ ok: false, code: scan.error_code, message: scan.error_message }, hours);
       } else {
-        cardState = { kind: 'scanning', done: scan.hours_done, total: scan.hours_total, hours };
+        cardState = { kind: 'scanning', done: scan.hours_done, total: scan.hours_total, hours, source: scan.source };
         scanTimer = setTimeout(tick, 1500);
       }
       renderRepo();
@@ -156,6 +165,7 @@
 
   const actions = {
     onScan: () => startScan(),
+    onScanDay: () => startScan(24),
     onRetry: () => { send({ type: 'clearCache' }).then(() => loadRepo(currentRepo)); },
     onOpenOptions: () => window.open(chrome.runtime.getURL('options.html'), '_blank'),
     onClose: () => { floatingOpen = false; floatingClosed = true; renderRepo(); },

@@ -8,12 +8,14 @@ import ru.itmo.ipkn.starguard.core.archive.ArchiveUnavailableException;
 import ru.itmo.ipkn.starguard.core.archive.GhArchiveClient;
 import ru.itmo.ipkn.starguard.core.archive.TimeWindowCalculator;
 import ru.itmo.ipkn.starguard.core.config.ScoringProperties;
+import ru.itmo.ipkn.starguard.core.domain.DataSource;
 import ru.itmo.ipkn.starguard.core.domain.EventType;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.StarMark;
 import ru.itmo.ipkn.starguard.core.domain.StarTimeline;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 import ru.itmo.ipkn.starguard.core.github.AccountAgeEnricher;
+import ru.itmo.ipkn.starguard.core.github.GithubHistoryService;
 import ru.itmo.ipkn.starguard.core.scoring.MockMode;
 import ru.itmo.ipkn.starguard.core.scoring.MockModeContext;
 import ru.itmo.ipkn.starguard.core.scoring.RepoScore;
@@ -39,6 +41,7 @@ public class RepoReportService {
     private final ObjectProvider<RepoDataProvider> indexedDataProvider;
     private final StarTimelineService timelineService;
     private final AccountAgeEnricher accountAgeEnricher;
+    private final GithubHistoryService historyService;
 
     public RepoReportService(
             GhArchiveClient archiveClient,
@@ -49,7 +52,8 @@ public class RepoReportService {
             MockModeContext mockModeContext,
             ObjectProvider<RepoDataProvider> indexedDataProvider,
             StarTimelineService timelineService,
-            AccountAgeEnricher accountAgeEnricher) {
+            AccountAgeEnricher accountAgeEnricher,
+            GithubHistoryService historyService) {
         this.archiveClient = archiveClient;
         this.windowCalculator = windowCalculator;
         this.aggregator = aggregator;
@@ -59,6 +63,20 @@ public class RepoReportService {
         this.indexedDataProvider = indexedDataProvider;
         this.timelineService = timelineService;
         this.accountAgeEnricher = accountAgeEnricher;
+        this.historyService = historyService;
+    }
+
+    /** Можно ли анализировать любой репозиторий по истории GitHub (нужен токен). */
+    public boolean historyAvailable() {
+        return historyService.available();
+    }
+
+    /**
+     * Анализ по истории GitHub: последние звёзды за {@code app.github.history.max-days}
+     * с временем и возрастом аккаунтов — работает для любого существующего репозитория.
+     */
+    public RepoReport historyReport(RepoRef repo, MockMode requestedMockMode, ArchiveProgress progress) {
+        return buildReport(repo, historyService.load(repo, progress), requestedMockMode);
     }
 
     public RepoReport getReport(RepoRef repo, Integer requestedHours, MockMode requestedMockMode) {
@@ -95,7 +113,8 @@ public class RepoReportService {
                 .filter(event -> event.type() == EventType.WATCH)
                 .map(event -> new StarMark(event.createdAt(), event.actorId(), false))
                 .toList();
-        return buildReport(repo, new RepoData(window, aggregate, archive, stars), requestedMockMode);
+        return buildReport(repo, new RepoData(window, aggregate, archive, null, stars, DataSource.archive()),
+                requestedMockMode);
     }
 
     private RepoReport buildReport(
@@ -109,6 +128,6 @@ public class RepoReportService {
                 () -> scoringEngine.score(aggregate.snapshot()));
         StarTimeline timeline = timelineService.build(aggregate.snapshot(), score, data.stars());
         return new RepoReport(
-                repo, data.window(), aggregate.stats(), score, data.archive(), timeline);
+                repo, data.window(), aggregate.stats(), score, data.archive(), timeline, data.source());
     }
 }

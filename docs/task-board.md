@@ -55,8 +55,8 @@
 
 | ID | Задача | Владелец | Оценка | Dep | Статус | Ветка / PR |
 |----|--------|----------|--------|-----|--------|------------|
-| F3-1 | Streaming-парсер, lightweight pass 1, early repo filter | Dev 2 · `@Ar6yZxZ` | 3 | — | ⬜ | — |
-| F3-2 | Почасовые compact-агрегаты, инкрементальный сдвиг окна | Dev 2 · `@Ar6yZxZ` | 3 | F3-1 | ⬜ | — |
+| F3-1 | Streaming-парсер, lightweight pass 1, early repo filter | Dev 2 · `@Ar6yZxZ` | 3 | — | ✅ | — |
+| F3-2 | Почасовые compact-агрегаты, инкрементальный сдвиг окна | Dev 2 · `@Ar6yZxZ` | 3 | F3-1 | 🟡 | — |
 | F3-3 | Tiered-модель top-10k + detail-1k + long-tail, primitive arrays | Dev 3 · `@mpstrkv` | 4 | F3-2 | ⬜ | — |
 | F3-4 | Precomputed rank/totalStars, read-only minute series, дедуп | Dev 3 · `@mpstrkv` | 2 | F3-3 | ⬜ | — |
 | F3-5 | C4 на 10k: инвертированный actor→repos / overlaps | Dev 3 · `@mpstrkv` | 2 | F3-3 | ⬜ | — |

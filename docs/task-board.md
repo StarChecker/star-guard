@@ -60,7 +60,7 @@
 | F3-3 | Tiered-модель top-10k + detail-1k + long-tail, primitive arrays | Dev 3 · `@mpstrkv` | 4 | F3-2 | ⬜ | — |
 | F3-4 | Precomputed rank/totalStars, read-only minute series, дедуп | Dev 3 · `@mpstrkv` | 2 | F3-3 | ⬜ | — |
 | F3-5 | C4 на 10k: инвертированный actor→repos / overlaps | Dev 3 · `@mpstrkv` | 2 | F3-3 | ⬜ | — |
-| F3-6 | Memory budget 1 ГБ, JVM `-Xmx1280m`, бенчмарк | Dev 5 · `@writenowme` | 2 | F3-3 | ⬜ | — |
+| F3-6 | Memory budget 1 ГБ, JVM `-Xmx1280m`, бенчмарк | Dev 5 · `@writenowme` | 2 | F3-3 | 🟡 | [PR #17](https://github.com/StarChecker/star-guard/pull/17): бюджет `app.index.memory-budget-mb`, контроль heap после сборки, `-Xmx1280m`, бенчмарк; eviction — после F3-3 |
 
 ## F4. Произвольный репозиторий: long-tail и 1–3 с
 
@@ -85,9 +85,9 @@
 | ID | Задача | Владелец | Оценка | Dep | Статус | Ветка / PR |
 |----|--------|----------|--------|-----|--------|------------|
 | X-1 | OpenAPI/README: поля, эндпоинты, коды ошибок | Dev 1 · `@h0o0p0e` | 1 | F1–F5 | ⬜ | — |
-| X-2 | Метрики index/parse/scan/mcp | Dev 5 · `@writenowme` | 1–2 | F3, F4 | ⬜ | — |
+| X-2 | Метрики index/parse/scan/mcp | Dev 5 · `@writenowme` | 1–2 | F3, F4 | 🟡 | [PR #17](https://github.com/StarChecker/star-guard/pull/17): index/scan + `/actuator/prometheus`; `parse.lines/sec` — после F3-1, `mcp.tool.latency` — после F2 |
 | X-3 | Приватность логинов/hash, MCP без внешних запросов | Dev 1 · `@h0o0p0e` | 1 | F1, F2 | ⬜ | — |
-| X-4 | CI: unit/integration офлайн + perf-smoke | Dev 5 · `@writenowme` | 1 | F3 | ⬜ | — |
+| X-4 | CI: unit/integration офлайн + perf-smoke | Dev 5 · `@writenowme` | 1 | F3 | ✅ | [PR #17](https://github.com/StarChecker/star-guard/pull/17): `PerfSmokeTest`, отчёт в сводке CI |
 | X-5 | Документация MCP/Claude Code, extension, on-demand | Dev 1 · `@h0o0p0e` | 1 | F2, F4 | ⬜ | — |
 
 ---

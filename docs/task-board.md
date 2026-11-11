@@ -29,8 +29,8 @@
 
 - Всего задач: **28**
 - ⬜ не взят: **23**
-- 🟡 в работе: **5** (эпик F2, `@h0o0p0e`)
-- ✅ выполнено: **0**
+- 🟡 в работе: **1** (F2-5, `@h0o0p0e`)
+- ✅ выполнено: **4** (F2-1…F2-4, отдельный репозиторий)
 
 ## F1. Расширение: аккаунты, интервалы всплеска, контрибьюторы
 
@@ -43,15 +43,18 @@
 
 ## F2. MCP-сервер под Claude Code (stdio, без внешних LLM)
 
-> 🟡 Взято в работу: **`@h0o0p0e`**, 2026-11-11, ветка `feat/f2-mcp`.
+> ✅ Реализовано в отдельном репозитории
+> **[StarChecker/star-guard-mcp](https://github.com/StarChecker/star-guard-mcp)**
+> (`main`, 15 тестов, stdio, без внешних LLM).
+> F2-5: остались Compose-обвязка и ручная проверка в Claude Code.
 
 | ID | Задача | Владелец | Оценка | Dep | Статус | Ветка / PR |
 |----|--------|----------|--------|-----|--------|------------|
-| F2-1 | Каркас `mcp/` на TypeScript + MCP SDK (stdio) | Dev 1 · `@h0o0p0e` | 2 | — | 🟡 | `feat/f2-mcp` |
-| F2-2 | Инструменты `assess_dependency`, report/scan/batch/index/badge | Dev 1 · `@h0o0p0e` | 2 | F2-1 | 🟡 | `feat/f2-mcp` |
-| F2-3 | Детерминированная трактовка по `level`/`verdict`/порогам | Dev 1 · `@h0o0p0e` | 1 | F2-2 | 🟡 | `feat/f2-mcp` |
-| F2-4 | Guardrails: `mocked`/`insufficient_data`/покрытие, дисклеймер | Dev 1 · `@h0o0p0e` | 1 | F2-3 | 🟡 | `feat/f2-mcp` |
-| F2-5 | Конфиг Claude Code, Compose, тесты с fake core | Dev 1 · `@h0o0p0e` | 1–2 | F2-4 | 🟡 | `feat/f2-mcp` |
+| F2-1 | Каркас MCP-сервера (stdio, Node/TypeScript) | Dev 1 · `@h0o0p0e` | 2 | — | ✅ | `star-guard-mcp/main` |
+| F2-2 | Инструменты `assess_dependency`, report/scan/batch/index/badge | Dev 1 · `@h0o0p0e` | 2 | F2-1 | ✅ | `star-guard-mcp/main` |
+| F2-3 | Детерминированная трактовка по `level`/`verdict`/порогам | Dev 1 · `@h0o0p0e` | 1 | F2-2 | ✅ | `star-guard-mcp/main` |
+| F2-4 | Guardrails: `mocked`/`insufficient_data`/покрытие, дисклеймер | Dev 1 · `@h0o0p0e` | 1 | F2-3 | ✅ | `star-guard-mcp/main` |
+| F2-5 | Конфиг Claude Code, Compose, тесты с fake core | Dev 1 · `@h0o0p0e` | 1–2 | F2-4 | 🟡 | `star-guard-mcp/main` (Compose/manual pending) |
 
 ## F3. Парсинг, 10k top-tier и long-tail без OOM
 

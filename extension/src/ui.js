@@ -79,6 +79,17 @@
 .section-title .aside { font-weight: 400; color: var(--sg-muted); }
 
 .chart { display: block; width: 100%; height: auto; overflow: visible; }
+.chart .spike-band { fill: var(--sg-danger); opacity: .14; }
+.chart .spike-band.neutral { fill: var(--sg-muted); opacity: .12; }
+.spike-label { margin-top: 4px; font-size: 11px; color: var(--sg-danger); }
+.spike-label.neutral { color: var(--sg-muted); }
+.actors { list-style: none; margin: 0; padding: 0; }
+.actor { padding: 6px 0; border-top: 1px solid var(--sg-border-muted); overflow-wrap: anywhere; }
+.actor-name { font-weight: 600; }
+.actor-reasons { color: var(--sg-severe); }
+.actor-meta { color: var(--sg-muted); font-size: 11px; }
+.actor-more summary { cursor: pointer; color: var(--sg-accent); margin-top: 6px; }
+.tiles.activity { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .chart .bar-ok { fill: var(--sg-accent); opacity: .55; }
 .chart .bar-bad { fill: var(--sg-danger); }
 .chart .axis { fill: var(--sg-muted); font-size: 9px; }
@@ -252,10 +263,13 @@ details.evidence[open] summary::before { content: '▾ '; }
       s('text', { x: 34, y: 48, 'text-anchor': 'middle', class: 'of' }, 'из 100'));
   }
 
-  function timeline(report, shadowRoot) {
+  function timeline(report) {
     const tl = report.stars_timeline;
     if (!tl || !tl.points || tl.points.length === 0) return null;
     const points = tl.points;
+    const intervals = Array.isArray(tl.spike_intervals) ? tl.spike_intervals : [];
+    const plotFrom = new Date(points[0].at).getTime();
+    const plotTo = plotFrom + points.length * tl.bucket_minutes * 60000;
     const W = 296, H = 92, top = 6, bottom = 16, left = 0;
     const plotH = H - top - bottom;
     const max = Math.max(1, ...points.map((p) => p.stars));
@@ -266,6 +280,16 @@ details.evidence[open] summary::before { content: '▾ '; }
       class: 'chart', viewBox: `0 0 ${W} ${H}`, role: 'img',
       'aria-label': `Звёзды по времени: всего ${report.stats.stars}, подозрительных ${tl.suspicious_stars}`,
     });
+    for (const interval of intervals) {
+      const from = Math.max(plotFrom, new Date(interval.from).getTime());
+      const to = Math.min(plotTo, new Date(interval.to).getTime());
+      if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) continue;
+      const x = (from - plotFrom) / (plotTo - plotFrom) * W;
+      const width = (to - from) / (plotTo - plotFrom) * W;
+      svg.append(s('rect', { class: 'spike-band' + (interval.suspicious ? '' : ' neutral'),
+        x, y: top, width: Math.max(.5, width), height: plotH },
+      s('title', {}, spikeText(interval))));
+    }
     svg.append(s('line', { class: 'grid', x1: 0, x2: W, y1: top + plotH + 0.5, y2: top + plotH + 0.5 }));
     svg.append(s('line', { class: 'grid', x1: 0, x2: W, y1: top + 0.5, y2: top + 0.5, 'stroke-dasharray': '2 3' }));
     svg.append(s('text', { class: 'axis', x: W, y: top + 9, 'text-anchor': 'end' }, String(max)));
@@ -315,9 +339,75 @@ details.evidence[open] summary::before { content: '▾ '; }
       h('div', { class: 'legend' },
         h('span', {}, h('i', { style: 'background: var(--sg-accent); opacity: .55' }), 'обычные'),
         h('span', {}, h('i', { style: 'background: var(--sg-danger)' }), 'подозрительные')),
+      intervals.map((interval) => h('div', {
+        class: 'spike-label' + (interval.suspicious ? '' : ' neutral'),
+      }, spikeText(interval))),
       tl.estimated
         ? h('div', { class: 'note' }, 'Подозрительные внутри часа распределены пропорционально: индекс хранит аккаунты по часам.')
         : null);
+  }
+
+  function spikeText(interval) {
+    const start = `${day(interval.from)} ${time(interval.from)}`;
+    const end = `${day(interval.to)} ${time(interval.to)}`;
+    const ratio = Number(interval.ratio).toLocaleString('ru-RU', { maximumFractionDigits: 1 });
+    return `${interval.suspicious ? 'Подозрительный всплеск' : 'Всплеск без оценки C1'}: ` +
+      `${start}–${end} · ${stars(interval.stars)} · ×${ratio} к фону · пик ${interval.peak}/мин`;
+  }
+
+  function activityTiles(report) {
+    const stats = report.stats;
+    const tile = (value, label) => h('div', { class: 'tile' }, h('b', {}, compact(value)), h('span', {}, label));
+    const historyOnly = report.source && report.source.type === 'github_api';
+    return h('div', { class: 'section' },
+      h('div', { class: 'section-title' }, 'Активность за окно'),
+      h('div', { class: 'tiles activity' },
+        tile(historyOnly ? null : stats.forks, 'форков'),
+        tile(historyOnly ? null : stats.issues, 'issues'),
+        tile(historyOnly ? null : stats.pushes, 'пушей'),
+        tile(stats.contributors, 'контрибьюторов')),
+      h('div', { class: 'note' }, historyOnly ? 'История звёзд не содержит событий активности.' :
+        'Контрибьюторы — уникальные участники fork, push, issues и PR за окно.'),
+      !historyOnly && (stats.contributors === null || stats.contributors === undefined)
+        ? h('div', { class: 'note' }, 'Нет полных данных об участниках.') : null);
+  }
+
+  function suspiciousActors(report) {
+    if (!Array.isArray(report.suspicious_actors)) return null;
+    const actors = report.suspicious_actors;
+    const total = report.suspicious_actors_total ?? actors.length;
+    const active = report.score.checks.some((c) => ['fresh_accounts', 'actor_overlap'].includes(c.id) &&
+      c.active && !(c.details && c.details.mocked));
+    const date = (iso) => new Date(iso).toLocaleDateString('ru-RU');
+    function row(actor) {
+      const login = actor.login;
+      const name = login || `#${actor.actor_hash}`;
+      const profile = login && /^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(login)
+        ? h('a', { href: 'https://github.com/' + encodeURIComponent(login), target: '_blank', rel: 'noopener noreferrer' }, name)
+        : h('span', {}, name);
+      const reasons = (actor.reasons || []).map((reason) =>
+        ({ fresh: 'свежий или пустой аккаунт', overlap: 'пересечение аудиторий' })[reason] || reason);
+      return h('li', { class: 'actor' },
+        h('div', { class: 'actor-name' }, profile),
+        h('div', { class: 'actor-reasons' }, reasons.join(' · ')),
+        h('div', { class: 'actor-meta' }, actor.account_created_at
+          ? 'Создан ' + date(actor.account_created_at) : 'Дата создания неизвестна'),
+        actor.first_seen ? h('div', { class: 'actor-meta' },
+          `Впервые в окне: ${date(actor.first_seen)} ${time(actor.first_seen)}`) : null,
+        actor.shared_repos > 0 ? h('div', { class: 'actor-meta' },
+          `Звёзды ещё в ${actor.shared_repos} ${plural(actor.shared_repos, 'репозитории', 'репозиториях', 'репозиториях')} за окно`) : null);
+    }
+    return h('div', { class: 'section suspicious-actors' },
+      h('div', { class: 'section-title' }, h('span', {}, 'Аккаунты с признаками'), h('span', { class: 'aside' }, total)),
+      h('ul', { class: 'actors' }, actors.slice(0, 5).map(row)),
+      actors.length > 5 ? h('details', { class: 'actor-more' },
+        h('summary', {}, 'Ещё ' + (actors.length - 5)),
+        h('ul', { class: 'actors' }, actors.slice(5).map(row))) : null,
+      total > actors.length ? h('div', { class: 'note' },
+        `В ответе ${actors.length} из ${total}: действует лимит выборки API.`) : null,
+      actors.length === 0 ? h('div', { class: 'note' }, active
+        ? 'C2/C4 не отметили аккаунты в доступных данных.'
+        : 'Нет данных активных реальных проверок C2/C4.') : null);
   }
 
   function checks(report) {
@@ -391,6 +481,8 @@ details.evidence[open] summary::before { content: '▾ '; }
             h('span', { class: 'pill', style: `color: ${level.color}` }, level.label),
             ' · уверенность ' + Math.round(report.score.confidence * 100) + '%'))),
       timeline(report),
+      activityTiles(report),
+      suspiciousActors(report),
       checks(report),
       evidence(report),
       h('div', { class: 'footer' },

@@ -56,7 +56,7 @@
 
 | Фича | PR | Статус | Что сделано |
 |------|----|--------|-------------|
-| Индекс топ-1000 | #3 | ✅ | фоновый двухпроходный `RepoIndexBuilder`, `RepoIndexSnapshot`, per-hour агрегаты, атомарная подмена, composer подокна |
+| Индекс топ-1000 | #3 | ✅ | фоновый `RepoIndexBuilder` (с F3-2 — один проход на час и инкрементальный сдвиг окна по `HourDigest`), `RepoIndexSnapshot`, per-hour агрегаты, атомарная подмена, composer подокна |
 | Быстрый путь запроса | #3 | ✅ | `IndexRepoDataProvider`: O(1) lookup вместо скачивания дампов; `hours` ограничен окном индекса |
 | Список доступных репозиториев | #3 | ✅ | `GET /api/v1/index/repos?limit=1000` |
 | Ошибки индекса | #3 | ✅ | `404 REPO_NOT_INDEXED`, `503 INDEX_NOT_READY`, readiness после прогрева |

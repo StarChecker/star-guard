@@ -3,14 +3,14 @@ info:
   title: Star Guard Core PoC
   description: |
     Статистика репозитория по данным GH Archive и suspicious score.
-    В PoC проверки C1–C5 замоканы: в ответе score.mocked = true,
-    профиль моков выбирается параметром mock_mode.
+    C1–C4 поддерживают реальные проверки. Режим каждой проверки указан
+    в score.checks[].details.mocked; mock_mode влияет только на моки.
   version: 0.1.0
 servers:
 - url: http://localhost:8080
 tags:
 - name: repos
-  description: "Статистика репозитория и suspicious score (PoC, проверки замоканы)"
+  description: "Статистика репозитория и suspicious score"
 - name: index
   description: "Репозитории, которые можно запрашивать у сервиса"
 paths:
@@ -22,7 +22,8 @@ paths:
       description: |
         Скачивает часовые дампы GH Archive за последние N полных часов,
         считает статистику по репозиторию и прогоняет её через движок scoring.
-        В PoC проверки C1–C5 замоканы: score.mocked = true.
+        Отчёт включает интервалы C1, выборку аккаунтов C2/C4 и участников активности.
+        Мок-проверки не помечают аккаунты подозрительными.
       operationId: getRepoReport
       parameters:
       - name: owner
@@ -135,19 +136,19 @@ components:
       type: object
       description: Сведения о загрузке окна из GH Archive
       properties:
-        hoursRequested:
+        hours_requested:
           type: integer
           format: int32
-        hoursLoaded:
+        hours_loaded:
           type: integer
           format: int32
-        missingHours:
+        missing_hours:
           type: array
           description: "Часы, файлы которых отсутствуют или не загрузились"
           items:
             type: string
             format: date-time
-        parseErrors:
+        parse_errors:
           type: integer
           format: int32
           description: "Строки, которые не удалось разобрать"
@@ -160,6 +161,10 @@ components:
         id:
           type: string
           example: burst
+        title:
+          type: string
+        summary:
+          type: string
         score:
           type: number
           format: double
@@ -199,13 +204,12 @@ components:
         name:
           type: string
           example: spring-boot
-        fullName:
+        full_name:
           type: string
           example: spring-projects/spring-boot
     RepoReportDto:
       type: object
-      description: Отчёт по репозиторию. В PoC проверки C1–C5 замоканы (score.mocked
-        = true)
+      description: Отчёт по репозиторию с объяснениями и выборкой аккаунтов
       properties:
         repo:
           $ref: "#/components/schemas/RepoDto"
@@ -217,6 +221,133 @@ components:
           $ref: "#/components/schemas/ScoreDto"
         archive:
           $ref: "#/components/schemas/ArchiveDto"
+        source:
+          $ref: "#/components/schemas/SourceDto"
+        stars_timeline:
+          $ref: "#/components/schemas/StarTimelineDto"
+        suspicious_actors:
+          type: array
+          description: |
+            Выборка уникальных аккаунтов по actorId (сам ID не публикуется).
+            Только активные реальные C2/C4 с ненулевым score. Сортировка:
+            число причин по убыванию, shared_repos по убыванию, actor_hash по возрастанию.
+            Лимит app.api.suspicious-actors-limit (1–500, по умолчанию 50).
+            Popup/sidebar сначала показывают 5, остальные раскрываются через «Ещё».
+          items:
+            $ref: "#/components/schemas/SuspiciousActorDto"
+        suspicious_actors_total:
+          type: integer
+          minimum: 0
+          description: Число уникальных отмеченных аккаунтов до ограничения выборки
+    SuspiciousActorDto:
+      type: object
+      required: [actor_hash, reasons, shared_repos]
+      properties:
+        actor_hash:
+          type: string
+          pattern: "^[0-9a-f]{12}$"
+          description: Стабильный SHA-256 hash от gh-actor:<actorId>, первые 12 hex-символов
+        login:
+          type: [string, 'null']
+          description: GitHub login; null при app.api.actor-logins=hash или без профиля
+        reasons:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [fresh, overlap]
+          description: fresh — свежий/пустой аккаунт C2; overlap — пересечение аудиторий C4
+        account_created_at:
+          type: [string, 'null']
+          format: date-time
+          description: Дата создания аккаунта; null, если неизвестна
+        first_seen:
+          type: [string, 'null']
+          format: date-time
+          description: |
+            Первое событие аккаунта в репозитории за выбранное окно. Без профиля —
+            первая известная звезда (в индексе до часа); null, если время неизвестно.
+        shared_repos:
+          type: integer
+          minimum: 0
+          description: Число других репозиториев индекса окна, которым аккаунт поставил звезду; нижняя граница при неполном индексе
+    StarTimelineDto:
+      type: object
+      properties:
+        bucket_minutes:
+          type: integer
+          description: Ширина точки; интервалы C1 сохраняют минутную точность при любом размере бакета
+        estimated:
+          type: boolean
+          description: Подозрительные звёзды внутри часа распределены пропорционально
+        suspicious_stars:
+          type: integer
+          description: Число звёзд с причинами C2/C4; интервал C1 сам по себе не меняет этот счётчик
+        suspicious_by_check:
+          type: object
+          additionalProperties:
+            type: integer
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/PointDto"
+        spike_intervals:
+          type: array
+          maxItems: 1
+          description: |
+            Самое насыщенное 10-минутное окно C1, при равенстве — самое раннее.
+            Пусто без минутных данных, при stars < min-burst или ratio <= ratio-floor.
+            Пока C1 выбирает один пик; массив допускает расширение алгоритма.
+            При mock/выключенном/неактивном C1 пик нейтральный (suspicious=false).
+          items:
+            $ref: "#/components/schemas/SpikeIntervalDto"
+    PointDto:
+      type: object
+      properties:
+        at:
+          type: string
+          format: date-time
+        stars:
+          type: integer
+        suspicious:
+          type: integer
+    SpikeIntervalDto:
+      type: object
+      required: [from, to, stars, ratio, peak, suspicious]
+      properties:
+        from:
+          type: string
+          format: date-time
+          description: Включительное начало интервала UTC
+        to:
+          type: string
+          format: date-time
+          description: Исключительный конец интервала UTC, не позже конца окна отчёта
+        stars:
+          type: integer
+          description: Количество звёзд в интервале
+        ratio:
+          type: number
+          description: stars / max(медиана звёзд в минуту за окно × 10, 1)
+        peak:
+          type: integer
+          description: Максимальное число звёзд за одну минуту интервала
+        suspicious:
+          type: boolean
+          description: true только при активном реальном C1 с ненулевым score
+    SourceDto:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [gh_archive, gh_archive_index, github_api]
+        stars_sampled:
+          type: [integer, 'null']
+        stars_total:
+          type: [integer, 'null']
+        coverage_from:
+          type: [string, 'null']
+          format: date-time
     ScoreDto:
       type: object
       description: Итоговый suspicious score и explain по проверкам
@@ -236,28 +367,30 @@ components:
         confidence:
           type: number
           format: double
-        insufficientData:
+        verdict:
+          type: string
+        insufficient_data:
           type: boolean
         mocked:
           type: boolean
-          description: "true, пока C1–C5 — моки (PoC)"
+          description: "true, если в отчёте есть мок-проверки"
           example: true
         checks:
           type: array
           items:
             $ref: "#/components/schemas/CheckDto"
-        rulesApplied:
+        rules_applied:
           type: array
           items:
             type: string
-        computedAt:
+        computed_at:
           type: string
           format: date-time
     StatsDto:
       type: object
       description: "Статистика репозитория за окно, посчитанная по событиям GH Archive"
       properties:
-        totalEvents:
+        total_events:
           type: integer
           format: int32
           example: 4231
@@ -277,18 +410,18 @@ components:
           type: integer
           format: int32
           example: 233
-        pullRequests:
+        pull_requests:
           type: integer
           format: int32
           example: 725
         other:
           type: integer
           format: int32
-        uniqueActors:
+        unique_actors:
           type: integer
           format: int32
           example: 611
-        starActors:
+        star_actors:
           type: integer
           format: int32
           example: 138
@@ -297,7 +430,15 @@ components:
           format: int32
           description: Максимум звёзд в любом 10-минутном окне
           example: 9
-        starsByHour:
+        contributors:
+          type: [integer, 'null']
+          minimum: 0
+          description: |
+            Distinct actorId с fork/push/issues/PR в выбранном окне, с дедупликацией
+            между часами; участник со звездой тоже учитывается, OTHER не учитывается.
+            Это не all-time contributors GitHub. null без полных профилей участников
+            или в режиме истории звёзд GitHub; 0 при известном отсутствии активности.
+        stars_by_hour:
           type: array
           items:
             $ref: "#/components/schemas/HourBucketDto"
@@ -329,7 +470,7 @@ components:
         name:
           type: string
           example: spring-boot
-        fullName:
+        full_name:
           type: string
           example: spring-projects/spring-boot
         stars:
@@ -343,23 +484,23 @@ components:
       properties:
         window:
           $ref: "#/components/schemas/WindowDto"
-        builtAt:
+        built_at:
           type: string
           format: date-time
-        topN:
+        top_n:
           type: integer
           format: int32
           description: Сколько репозиториев в индексе
           example: 1000
-        hoursLoaded:
+        hours_loaded:
           type: integer
           format: int32
-        missingHours:
+        missing_hours:
           type: array
           items:
             type: string
             format: date-time
-        parseErrors:
+        parse_errors:
           type: integer
           format: int32
         repos:

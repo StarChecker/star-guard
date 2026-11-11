@@ -18,6 +18,7 @@
     const slot = el('div', { className: 'slot box' });
     const host = el('div');
     host.style.display = 'block';
+    if (options && options.popup) slot.style.width = '360px';
     slot.append(host);
     parent.append(slot);
     UI.renderCard(host.attachShadow({ mode: 'open' }), state, actions, options);
@@ -65,6 +66,17 @@
     card(grid, { kind: 'report', data: S.healthy });
     card(grid, { kind: 'report', data: S.history });
     col.append(grid);
+
+    col.append(el('h2', {}, 'Popup: топ-5 аккаунтов и «Ещё»'));
+    const popupGrid = el('div', { className: 'grid' });
+    card(popupGrid, { kind: 'report', data: S.farm }, { popup: true });
+    card(popupGrid, { kind: 'report', data: S.healthy }, { popup: true });
+    col.append(popupGrid);
+
+    col.append(el('h2', {}, 'Hash-режим и нейтральный всплеск C1'));
+    const privateGrid = el('div', { className: 'grid' });
+    card(privateGrid, { kind: 'report', data: S.private });
+    col.append(privateGrid);
 
     col.append(el('h2', {}, 'Остальные состояния'));
     const states = el('div', { className: 'grid' });

@@ -2,9 +2,9 @@
 window.STAR_GUARD_SAMPLES = {
  "farm": {
   "repo": {
-   "owner": "quick-ai",
-   "name": "gpt-agent-pro",
-   "full_name": "quick-ai/gpt-agent-pro"
+   "owner": "demo",
+   "name": "farm-target",
+   "full_name": "demo/farm-target"
   },
   "window": {
    "from": "2026-11-10T09:00:00Z",
@@ -12,7 +12,7 @@ window.STAR_GUARD_SAMPLES = {
    "hours": 6
   },
   "stats": {
-   "total_events": 131,
+   "total_events": 104,
    "stars": 94,
    "forks": 3,
    "pushes": 4,
@@ -22,7 +22,8 @@ window.STAR_GUARD_SAMPLES = {
    "unique_actors": 97,
    "star_actors": 94,
    "peak_stars_10m": 26,
-   "stars_by_hour": []
+   "stars_by_hour": [],
+   "contributors": 5
   },
   "score": {
    "score": 78,
@@ -39,7 +40,7 @@ window.STAR_GUARD_SAMPLES = {
     {
      "id": "burst",
      "title": "Всплески звёзд",
-     "summary": "Демо-значение: реальная проверка ещё не подключена.",
+     "summary": "26 звёзд за 10 минут: в 26 раз выше фона.",
      "score": 0.95,
      "confidence": 0.9,
      "weight": 0.3,
@@ -47,23 +48,24 @@ window.STAR_GUARD_SAMPLES = {
      "active": true,
      "error": null,
      "details": {
-      "mocked": true,
-      "profile": "suspicious"
+      "mocked": false,
+      "window_start": "2026-11-10T11:25:00Z",
+      "max_burst_10m": 26,
+      "ratio": 26
      }
     },
     {
      "id": "fresh_accounts",
      "title": "Свежие и пустые аккаунты",
-     "summary": "Нет данных о возрасте аккаунтов — проверка не участвует в оценке.",
-     "score": 0.0,
-     "confidence": 0.0,
+     "summary": "20 аккаунтов моложе 30 дней.",
+     "score": 0.6,
+     "confidence": 0.9,
      "weight": 0.22,
-     "contribution": 0.0,
-     "active": false,
+     "contribution": 0,
+     "active": true,
      "error": null,
      "details": {
-      "mocked": false,
-      "reason": "no_actor_data"
+      "mocked": false
      }
     },
     {
@@ -86,7 +88,7 @@ window.STAR_GUARD_SAMPLES = {
      "id": "actor_overlap",
      "title": "Пересечение аккаунтов",
      "summary": "52 из 94 отметивших репозиторий поставили звёзды ещё ≥2 репозиториям за окно. Сильнее всего совпадает аудитория quick-ai/crypto-sniper-bot (81%).",
-     "score": 1.0,
+     "score": 1,
      "confidence": 0.8,
      "weight": 0.22,
      "contribution": 0.22,
@@ -337,14 +339,110 @@ window.STAR_GUARD_SAMPLES = {
      "stars": 0,
      "suspicious": 0
     }
+   ],
+   "spike_intervals": [
+    {
+     "from": "2026-11-10T11:25:00Z",
+     "to": "2026-11-10T11:35:00Z",
+     "stars": 26,
+     "ratio": 26,
+     "peak": 6,
+     "suspicious": true
+    }
    ]
-  }
+  },
+  "suspicious_actors": [
+   {
+    "actor_hash": "000000000001",
+    "login": "demo-star-1",
+    "reasons": [
+     "fresh",
+     "overlap"
+    ],
+    "account_created_at": "2026-11-01T10:00:00Z",
+    "first_seen": "2026-11-10T11:25:00Z",
+    "shared_repos": 4
+   },
+   {
+    "actor_hash": "000000000002",
+    "login": "demo-star-2",
+    "reasons": [
+     "fresh",
+     "overlap"
+    ],
+    "account_created_at": "2026-11-01T10:00:00Z",
+    "first_seen": "2026-11-10T11:26:00Z",
+    "shared_repos": 4
+   },
+   {
+    "actor_hash": "000000000003",
+    "login": "demo-star-3",
+    "reasons": [
+     "fresh",
+     "overlap"
+    ],
+    "account_created_at": "2026-11-01T10:00:00Z",
+    "first_seen": "2026-11-10T11:27:00Z",
+    "shared_repos": 4
+   },
+   {
+    "actor_hash": "000000000004",
+    "login": "demo-star-4",
+    "reasons": [
+     "overlap"
+    ],
+    "account_created_at": null,
+    "first_seen": "2026-11-10T11:28:00Z",
+    "shared_repos": 2
+   },
+   {
+    "actor_hash": "000000000005",
+    "login": "demo-star-5",
+    "reasons": [
+     "overlap"
+    ],
+    "account_created_at": null,
+    "first_seen": "2026-11-10T11:29:00Z",
+    "shared_repos": 2
+   },
+   {
+    "actor_hash": "000000000006",
+    "login": "demo-star-6",
+    "reasons": [
+     "overlap"
+    ],
+    "account_created_at": null,
+    "first_seen": "2026-11-10T11:30:00Z",
+    "shared_repos": 2
+   },
+   {
+    "actor_hash": "000000000007",
+    "login": "demo-star-7",
+    "reasons": [
+     "overlap"
+    ],
+    "account_created_at": null,
+    "first_seen": "2026-11-10T11:31:00Z",
+    "shared_repos": 2
+   },
+   {
+    "actor_hash": "000000000008",
+    "login": "demo-star-8",
+    "reasons": [
+     "overlap"
+    ],
+    "account_created_at": null,
+    "first_seen": "2026-11-10T11:32:00Z",
+    "shared_repos": 2
+   }
+  ],
+  "suspicious_actors_total": 52
  },
  "healthy": {
   "repo": {
-   "owner": "acme",
-   "name": "web-framework",
-   "full_name": "acme/web-framework"
+   "owner": "demo",
+   "name": "organic-app",
+   "full_name": "demo/organic-app"
   },
   "window": {
    "from": "2026-11-10T09:00:00Z",
@@ -352,7 +450,7 @@ window.STAR_GUARD_SAMPLES = {
    "hours": 6
   },
   "stats": {
-   "total_events": 4231,
+   "total_events": 4258,
    "stars": 169,
    "forks": 21,
    "pushes": 3110,
@@ -362,7 +460,8 @@ window.STAR_GUARD_SAMPLES = {
    "unique_actors": 611,
    "star_actors": 169,
    "peak_stars_10m": 11,
-   "stars_by_hour": []
+   "stars_by_hour": [],
+   "contributors": 480
   },
   "score": {
    "score": 7,
@@ -392,10 +491,10 @@ window.STAR_GUARD_SAMPLES = {
      "id": "fresh_accounts",
      "title": "Свежие и пустые аккаунты",
      "summary": "Нет данных о возрасте аккаунтов — проверка не участвует в оценке.",
-     "score": 0.0,
-     "confidence": 0.0,
+     "score": 0,
+     "confidence": 0,
      "weight": 0.22,
-     "contribution": 0.0,
+     "contribution": 0,
      "active": false,
      "error": null,
      "details": {
@@ -407,10 +506,10 @@ window.STAR_GUARD_SAMPLES = {
      "id": "engagement",
      "title": "Звёзды без активности",
      "summary": "На 169 звёзд — 4089 действий (форки, issues, PR, пуши).",
-     "score": 0.0,
+     "score": 0,
      "confidence": 0.9,
      "weight": 0.18,
-     "contribution": 0.0,
+     "contribution": 0,
      "active": true,
      "error": null,
      "details": {
@@ -420,11 +519,11 @@ window.STAR_GUARD_SAMPLES = {
     {
      "id": "actor_overlap",
      "title": "Пересечение аккаунтов",
-     "summary": "6 из 169 отметивших репозиторий поставили звёзды ещё ≥2 репозиториям за окно.",
-     "score": 0.04,
+     "summary": "Значимых пересечений аудиторий не обнаружено.",
+     "score": 0,
      "confidence": 0.8,
      "weight": 0.22,
-     "contribution": 0.009,
+     "contribution": 0,
      "active": true,
      "error": null,
      "details": {
@@ -464,10 +563,8 @@ window.STAR_GUARD_SAMPLES = {
   "stars_timeline": {
    "bucket_minutes": 10,
    "estimated": true,
-   "suspicious_stars": 1,
-   "suspicious_by_check": {
-    "actor_overlap": 1
-   },
+   "suspicious_stars": 0,
+   "suspicious_by_check": {},
    "points": [
     {
      "at": "2026-11-10T09:00:00Z",
@@ -572,7 +669,7 @@ window.STAR_GUARD_SAMPLES = {
     {
      "at": "2026-11-10T12:20:00Z",
      "stars": 8,
-     "suspicious": 1
+     "suspicious": 0
     },
     {
      "at": "2026-11-10T12:30:00Z",
@@ -649,32 +746,13 @@ window.STAR_GUARD_SAMPLES = {
      "stars": 4,
      "suspicious": 0
     }
-   ]
-  }
+   ],
+   "spike_intervals": []
+  },
+  "suspicious_actors": [],
+  "suspicious_actors_total": 0
  },
  "summaries": {
-  "quick-ai/gpt-agent-pro": {
-   "full_name": "quick-ai/gpt-agent-pro",
-   "status": "ok",
-   "score": 78,
-   "level": "high",
-   "confidence": 0.82,
-   "verdict": "Заметные признаки накрутки: главный сигнал — «пересечение аккаунтов».",
-   "stars": 94,
-   "suspicious_stars": 52,
-   "mocked": true
-  },
-  "acme/web-framework": {
-   "full_name": "acme/web-framework",
-   "status": "ok",
-   "score": 7,
-   "level": "low",
-   "confidence": 0.86,
-   "verdict": "Признаков накрутки не найдено.",
-   "stars": 169,
-   "suspicious_stars": 1,
-   "mocked": true
-  },
   "free-tools/game-cheats-2026": {
    "full_name": "free-tools/game-cheats-2026",
    "status": "ok",
@@ -707,6 +785,28 @@ window.STAR_GUARD_SAMPLES = {
    "stars": null,
    "suspicious_stars": null,
    "mocked": false
+  },
+  "demo/farm-target": {
+   "full_name": "demo/farm-target",
+   "status": "ok",
+   "score": 78,
+   "level": "high",
+   "confidence": 0.82,
+   "verdict": "Заметные признаки накрутки: главный сигнал — «пересечение аккаунтов».",
+   "stars": 94,
+   "suspicious_stars": 52,
+   "mocked": true
+  },
+  "demo/organic-app": {
+   "full_name": "demo/organic-app",
+   "status": "ok",
+   "score": 7,
+   "level": "low",
+   "confidence": 0.86,
+   "verdict": "Признаков накрутки не найдено.",
+   "stars": 169,
+   "suspicious_stars": 0,
+   "mocked": true
   }
  },
  "history": {
@@ -721,7 +821,7 @@ window.STAR_GUARD_SAMPLES = {
    "hours": 732
   },
   "stats": {
-   "total_events": 131,
+   "total_events": 308,
    "stars": 298,
    "forks": 3,
    "pushes": 4,
@@ -731,7 +831,8 @@ window.STAR_GUARD_SAMPLES = {
    "unique_actors": 97,
    "star_actors": 94,
    "peak_stars_10m": 31,
-   "stars_by_hour": []
+   "stars_by_hour": [],
+   "contributors": null
   },
   "score": {
    "score": 64,
@@ -1148,11 +1249,50 @@ window.STAR_GUARD_SAMPLES = {
      "stars": 6,
      "suspicious": 0
     }
-   ]
-  }
+   ],
+   "spike_intervals": []
+  },
+  "suspicious_actors": [
+   {
+    "actor_hash": "abc012345678",
+    "login": "demo-new-dev",
+    "reasons": [
+     "fresh"
+    ],
+    "account_created_at": "2026-11-01T10:00:00Z",
+    "first_seen": "2026-11-02T10:00:00Z",
+    "shared_repos": 0
+   }
+  ],
+  "suspicious_actors_total": 1
+ },
+ "preview": {
+  "repo": {
+   "owner": "acme",
+   "name": "cli-helper",
+   "full_name": "acme/cli-helper"
+  },
+  "source": "github",
+  "partial": true,
+  "note": "Нет данных GH Archive: базовая статистика GitHub, без оценки.",
+  "stars": 1840,
+  "forks": 96,
+  "open_issues": 23,
+  "watchers": 31,
+  "contributors": 14,
+  "archived": false,
+  "fork": false,
+  "created_at": "2023-04-02T10:00:00Z",
+  "pushed_at": "2026-11-09T18:20:00Z",
+  "fetched_at": "2026-11-11T15:00:00Z",
+  "cached": false
  }
 };
-window.STAR_GUARD_SAMPLES.preview = {"repo": {"owner": "acme", "name": "cli-helper", "full_name": "acme/cli-helper"},
-  "source": "github", "partial": true, "note": "Нет данных GH Archive: базовая статистика GitHub, без оценки.",
-  "stars": 1840, "forks": 96, "open_issues": 23, "watchers": 31, "contributors": 14, "archived": false, "fork": false,
-  "created_at": "2023-04-02T10:00:00Z", "pushed_at": "2026-11-09T18:20:00Z", "fetched_at": "2026-11-11T15:00:00Z", "cached": false};
+
+// Отдельный сценарий приватности использует те же данные, но без логинов.
+window.STAR_GUARD_SAMPLES.private = JSON.parse(JSON.stringify(window.STAR_GUARD_SAMPLES.farm));
+window.STAR_GUARD_SAMPLES.private.suspicious_actors.forEach((actor) => { actor.login = null; });
+window.STAR_GUARD_SAMPLES.private.stars_timeline.spike_intervals[0].suspicious = false;
+Object.assign(window.STAR_GUARD_SAMPLES.private.score.checks.find((check) => check.id === 'burst'), {
+  details: { mocked: true }, summary: 'Демо-значение C1; наблюдаемый всплеск без оценки.',
+});

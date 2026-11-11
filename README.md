@@ -195,6 +195,61 @@ curl "http://localhost:8080/api/v1/repos/demo/organic-app?hours=3"
   фермы, C2 — свежие и пустые аккаунты. В режиме индекса аккаунты известны по часам,
   поэтому подозрительные внутри часа распределены пропорционально (`estimated: true`).
 
+### Аккаунты, всплески и активность (F1)
+
+В popup и sidebar доступны одинаковые данные полного отчёта (включая `scan.report`):
+
+- `stars_timeline.spike_intervals[]` — пик C1 с точными `from`/`to` (UTC, `[from,to)`),
+  `stars` за интервал, `ratio` относительно `max(медиана звёзд/мин × 10, 1)`,
+  `peak` — максимум за одну минуту и `suspicious`. Текущий C1 выбирает одно самое
+  насыщенное 10-минутное окно (при равенстве самое раннее). Ниже `min-burst` или
+  при `ratio <= ratio-floor` массив пуст. Цвет подозрения появляется только у
+  реального активного C1 с ненулевым score; mock/выключенный C1 даёт нейтральный пик.
+  Интервал C1 не увеличивает счётчики подозрительных звёзд C2/C4.
+- `suspicious_actors[]` — уникальные аккаунты с `login`, `actor_hash`, `reasons`
+  (`fresh` = C2, `overlap` = C4), `account_created_at`, `first_seen`, `shared_repos`.
+  `shared_repos` — **число других репозиториев** индекса окна со звездой этого аккаунта,
+  нижняя граница при неполном индексе. `first_seen` — первое событие в репозитории
+  за выбранное окно; без профиля — первая известная звезда, в индексе с точностью до часа.
+  Неизвестные даты и логин — `null`, вместо логина интерфейс показывает hash.
+  Mock, неактивные проверки и проверки с нулевым score не отмечают аккаунты.
+- `suspicious_actors_total` — число отмеченных аккаунтов **до лимита**. Порядок выборки:
+  больше причин, больше `shared_repos`, затем `actor_hash` по возрастанию.
+  В карточке сначала пять строк, затем «Ещё»; превышение лимита ответа указано отдельно.
+- `stats.contributors` — уникальные участники fork/push/issues/PR за окно. Один аккаунт
+  учитывается один раз между часами, даже если также ставил звёзды; OTHER не учитывается.
+  Это не число всех контрибьюторов GitHub за историю проекта. Без полных профилей
+  участников и для истории звёзд GitHub — `null` (в карточке «—»).
+
+```yaml
+app:
+  api:
+    actor-logins: show          # show | hash; по умолчанию показываем известные логины
+    suspicious-actors-limit: 50 # 1–500; UI сначала показывает 5 из этой выборки
+```
+
+Новый tiered-индекс F3-3 не требуется для текущего F1: API работает с существующими
+почасовыми `ActorActivity`, а без профилей использует hash для C4. Хранение и
+наполнение будущего long-tail относятся к F3/F4.
+
+Офлайн-демо без внешних запросов:
+
+```bash
+java -jar target/star-guard-core-0.1.0-SNAPSHOT.jar \
+  --app.archive.mode=fixture \
+  --app.scoring.checks.burst.mode=real \
+  --app.scoring.checks.fresh-accounts.mode=real \
+  --app.scoring.checks.actor-overlap.mode=real \
+  --app.scoring.checks.engagement.mode=real
+curl 'http://localhost:8080/api/v1/repos/demo/farm-target?hours=3'
+curl 'http://localhost:8080/api/v1/repos/demo/organic-app?hours=3'
+curl 'http://localhost:8080/api/v1/repos/demo/fresh-farm?hours=3'
+```
+
+Preview: откройте `extension/preview/index.html` — popup/sidebar, светлая/тёмная темы,
+раскрытие аккаунтов, hash и нейтральный C1. Проверки: `mvn test` (JDK 25) и
+`node --test extension/test/*.test.js` (DOM-контракт без npm-зависимостей).
+
 ### Бейдж для README
 
 ```markdown

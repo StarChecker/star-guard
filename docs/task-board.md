@@ -28,18 +28,21 @@
 ## Сводка
 
 - Всего задач: **28**
-- ⬜ не взят: **18**
-- 🟡 в работе: **6**
+- ⬜ не взят: **14**
+- 🟡 в работе: **10**
 - ✅ выполнено: **4**
 
 ## F1. Расширение: аккаунты, интервалы всплеска, контрибьюторы
 
 | ID | Задача | Владелец | Оценка | Dep | Статус | Ветка / PR |
 |----|--------|----------|--------|-----|--------|------------|
-| F1-1 | API `spike_intervals[]` в `StarTimelineDto` | Dev 4 · `@nenerower` | 1–2 | — | ⬜ | — |
-| F1-2 | API `suspicious_actors[]` (login/причины) + `contributors` | Dev 4 · `@nenerower` | 3 | C2/C4 real, F3-3 | ⬜ | — |
-| F1-3 | Popup/sidebar UI: интервал, топ-5 аккаунтов + «ещё», плитки | Dev 4 · `@nenerower` | 3 | F1-1, F1-2 | ⬜ | — |
-| F1-4 | Preview-фикстуры, тесты, OpenAPI, README | Dev 4 · `@nenerower` | 2 | F1-1…F1-3 | ⬜ | — |
+| F1-1 | API `spike_intervals[]` в `StarTimelineDto` | Dev 4 · `@nenerower` | 1–2 | — | 🟡 | `feat/f1-extension-evidence` · API пика C1 готов, точные границы и neutral/mock покрыты тестами; ожидает PR |
+| F1-2 | API `suspicious_actors[]` (login/причины) + `contributors` | Dev 4 · `@nenerower` | 3 | C2/C4 real, F3-3 | 🟡 | `feat/f1-extension-evidence` · аккаунты C2/C4, show/hash, лимит, дедуп контрибьюторов готовы на текущем индексе; F3-3 не требуется для этого формата |
+| F1-3 | Popup/sidebar UI: интервал, топ-5 аккаунтов + «ещё», плитки | Dev 4 · `@nenerower` | 3 | F1-1, F1-2 | 🟡 | `feat/f1-extension-evidence` · общий popup/sidebar UI: интервал, топ-5 + «Ещё», плитки; DOM-тесты зелёные |
+| F1-4 | Preview-фикстуры, тесты, OpenAPI, README | Dev 4 · `@nenerower` | 2 | F1-1…F1-3 | 🟡 | `feat/f1-extension-evidence` · preview, OpenAPI, README, 196 JUnit/MockMvc + 7 DOM-тестов без npm; ожидает браузерного ревью и PR |
+
+> F1: реализация локально готова; ✅ будет выставлен после мержа по правилам доски.
+> Визуальный просмотр preview в браузере пока не выполнен; автоматические DOM-проверки проходят.
 
 ## F2. MCP-сервер под Claude Code (stdio, без внешних LLM)
 

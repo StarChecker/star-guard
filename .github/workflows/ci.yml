@@ -81,13 +81,16 @@ jobs:
       - name: Test GitHub Action
         run: node --test action/test/*.test.js
 
+      - name: Test extension DOM contract
+        run: node --test extension/test/*.test.js
+
       - name: Check extension sources
         run: |
           node -e "JSON.parse(require('fs').readFileSync('extension/manifest.json', 'utf8'))"
           for file in extension/src/*.js extension/preview/*.js; do node --check "$file"; done
 
       - name: Pack extension
-        run: cd extension && zip -r ../star-guard-extension.zip . -x 'preview/*'
+        run: cd extension && zip -r ../star-guard-extension.zip . -x 'preview/*' 'test/*'
 
       - name: Upload extension zip
         uses: actions/upload-artifact@v4

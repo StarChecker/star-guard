@@ -1,0 +1,8 @@
+{
+  "minutes_observed": 20,
+  "stars_24h": 2,
+  "pattern": [0],
+  "points": [
+    {"minute": 10, "stars": 2}
+  ]
+}

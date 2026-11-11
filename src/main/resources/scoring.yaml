@@ -1,0 +1,11 @@
+app:
+  scoring:
+    checks:
+      burst:
+        enabled: true
+        mode: ${app.scoring.mode:mock}
+        weight: 0.30
+        ratio-floor: 3.0
+        ratio-span: 12.0
+        min-burst: 10
+        warmup-minutes: 60

@@ -30,9 +30,7 @@ public record RepoSnapshot(
         Objects.requireNonNull(capturedAt, "capturedAt");
         Objects.requireNonNull(counts, "counts");
         Objects.requireNonNull(data, "data");
-        starsByMinute = starsByMinute == null
-                ? new int[window.hours() * 60]
-                : starsByMinute.clone();
+        starsByMinute = starsByMinute == null ? null : starsByMinute.clone();
         starActorProfiles = starActorProfiles == null ? List.of() : List.copyOf(starActorProfiles);
         starIndex = starIndex == null ? StarIndex.empty() : starIndex;
     }
@@ -83,6 +81,6 @@ public record RepoSnapshot(
 
     @Override
     public int[] starsByMinute() {
-        return starsByMinute.clone();
+        return starsByMinute == null ? null : starsByMinute.clone();
     }
 }

@@ -2,6 +2,8 @@ server:
   port: 8080
 
 spring:
+  config:
+    import: classpath:scoring.yaml
   application:
     name: star-guard-core
   jackson:
@@ -54,7 +56,7 @@ app:
     mock-mode: healthy        # профиль моков: healthy | borderline | suspicious (только для mock-проверок)
     min-confidence: 0.5
     weights:
-      burst: 0.30
+      burst: ${app.scoring.checks.burst.weight}
       fresh_accounts: 0.22
       engagement: 0.18
       actor_overlap: 0.22

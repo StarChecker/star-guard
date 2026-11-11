@@ -1,6 +1,6 @@
 # Star Guard — план следующих фич (пул задач)
 
-> Статус: черновик на согласование · База: `main` = `2e294e3` (2026-11-10)
+> Статус: **согласовано**, решения §0 зафиксированы · База: `main` = `2e294e3` (2026-11-10)
 > Проверка базы: `mvn clean test` на JDK 25 — **160 тестов, 0 ошибок**.
 > Текущая карта фич: [docs/feature-map.md](feature-map.md).
 
@@ -10,12 +10,12 @@
 |--------|---------|
 | 1–3 с для произвольного репозитория | Best-effort для **случайного активного** репозитория: long-tail компактный индекс всех репозиториев окна. Если событий нет — честный `202` + фоновый скан |
 | Объём индекса | Основной tier — **top-10 000**; long-tail — компактные агрегаты для остальных репозиториев окна. `top-n` конфигурируемый |
-| Память | Default budget **1 ГБ** на индекс (`app.index.memory-budget-mb: 1024`), eviction/backpressure, без OOM на ноутбуке |
+| Память | Индекс — **1 ГБ** (`app.index.memory-budget-mb: 1024`), JVM heap — **`-Xmx1280m`** (1 ГБ индекса + ~20% на остальное); eviction/backpressure, без OOM на ноутбуке |
 | MCP / «нейросеть» | MCP-сервер **не делает внешних LLM-запросов**. Трактовка детерминированная: наш сервис уже отдаёт `score/level/verdict/checks`, MCP маппит их в категории по порогам. Claude Code — только MCP-клиент |
-| Транспорт MCP | Две фичи: **stdio** (Claude Code) и **Streamable HTTP** (хостинг/несколько клиентов) |
+| Транспорт MCP | Для PoC — **только stdio** (Claude Code). Streamable HTTP — P2/после PoC |
 | Логины аккаунтов | Показываем login по умолчанию; режим hash — как fallback/приватный режим |
-| Холодные репозитории | Полный score — async scan (`202` + polling). GitHub-API preview — **отдельная фича F5**, не входит в F4 |
-| Где показывать статистику | **Popup** (и та же карточка в sidebar): аккаунты, интервалы всплеска, форки/issues/пушы/контрибьюторы |
+| Холодные репозитории | Полный score — async scan (`202` + polling). GitHub-API preview — **отдельная фича F5, делаем сразу после F4** |
+| Где показывать статистику | **Popup** (и та же карточка в sidebar): аккаунты, интервалы всплеска, форки/issues/пушы/контрибьюторы. В popup — **топ-5 подозрительных аккаунтов + «ещё»** |
 
 ---
 
@@ -72,7 +72,7 @@ index, badge. Внешняя LLM не нужна: интерпретация с�
 | Метрика | Сейчас | Цель |
 |---------|--------|------|
 | Top-tier индекса | 1 000 | **10 000** (detail-агрегаты); long-tail — компактно для остальных репозиториев окна |
-| Память индекса | до ~1–2 ГБ | **≤1 ГБ** (`app.index.memory-budget-mb: 1024`), eviction/backpressure |
+| Память индекса | до ~1–2 ГБ | **≤1 ГБ** (`app.index.memory-budget-mb: 1024`), JVM `-Xmx1280m`, eviction/backpressure |
 | Ответ по top-tier | O(1), но сортировки/клоны | **p95 < 100 мс** |
 | Ответ по long-tail | — | **1–3 с** для репозитория с событиями в окне |
 | Холодный/пустой репозиторий | скан минуты | **202** + прогресс; preview — отдельная фича F5 |
@@ -87,11 +87,11 @@ index, badge. Внешняя LLM не нужна: интерпретация с�
 |---|---------|--------|
 | A1 | **Tier A — top-10k** | счётчики, `starsByMinute[60]`, star actor IDs; полные `ActorActivity` (login/accountCreatedAt) — только **detail-tier top-1k** |
 | A2 | **Tier B — long-tail** | для остальных репозиториев окна: счётчики + разреженные минуты звёзд + star actor IDs; без логинов/истории аккаунтов |
-| A3 | **Память** | budget 1 ГБ, eviction самых старых часов/редких репозиториев, backpressure; long-tail без `ActorActivity`; top-tier — примитивы, не boxed-записи |
+| A3 | **Память** | индекс — budget 1 ГБ, JVM heap — `-Xmx1280m` (индекс + ~20% на остальное); eviction самых старых часов/редких репозиториев, backpressure; long-tail без `ActorActivity`; top-tier — примитивы, не boxed-записи |
 | A4 | **Парсер** | streaming Jackson `JsonParser`, только `id/type/created_at/repo/actor`; lightweight событие для pass 1; ранний фильтр по `repo.name` |
 | A5 | **Обновление** | первый build — два прохода; далее почасовые агрегаты + парсинг только нового часа, сдвиг окна |
 | A6 | **1–3 с** | long-tail lookup для репозитория с событиями; если нет — `202` + async scan; без внешних API в F4 |
-| A7 | **MCP** | отдельный `mcp/` на Node/TypeScript (`@modelcontextprotocol/sdk`), stdio + Streamable HTTP; **только вызовы нашего REST**, без внешних LLM |
+| A7 | **MCP** | отдельный `mcp/` на Node/TypeScript (`@modelcontextprotocol/sdk`), **stdio в PoC**; Streamable HTTP — P2; **только вызовы нашего REST**, без внешних LLM |
 | A8 | **Интерпретация** | детерминированная: `level` → категория (`healthy / borderline / suspicious / critical / insufficient`), причины из `verdict` и `checks[].summary`, рекомендация по порогам |
 
 ---
@@ -106,8 +106,8 @@ index, badge. Внешняя LLM не нужна: интерпретация с�
 | ID | Задача | Оценка | Зависимости |
 |----|--------|--------|-------------|
 | F1-1 | API `spike_intervals[]` в `StarTimelineDto` (from/to, stars, ratio, peak, suspicious) | 1–2 | — |
-| F1-2 | API `suspicious_actors[]` (login, reasons fresh/overlap, account_created_at, first_seen, shared_repos) и `contributors` в `StatsDto` | 3 | C2/C4 real; F3-3 |
-| F1-3 | Extension UI: цветной интервал на графике, список аккаунтов, плитки форков/issues/пушей/контрибьюторов — **в popup и sidebar** | 3 | F1-1, F1-2 |
+| F1-2 | API `suspicious_actors[]` (login, reasons fresh/overlap, account_created_at, first_seen, shared_repos) и `contributors` в `StatsDto`; лимит для popup — 5 | 3 | C2/C4 real; F3-3 |
+| F1-3 | Extension UI: цветной интервал на графике, список аккаунтов (**в popup — топ-5 + «ещё»**), плитки форков/issues/пушей/контрибьюторов — popup и sidebar | 3 | F1-1, F1-2 |
 | F1-4 | Preview-фикстуры, MockMvc/JUnit, OpenAPI, README | 2 | F1-1…F1-3 |
 
 **Реализация:**
@@ -134,11 +134,11 @@ index, badge. Внешняя LLM не нужна: интерпретация с�
 
 | ID | Задача | Оценка | Зависимости |
 |----|--------|--------|-------------|
-| F2-1 | Каркас `mcp/` на TypeScript + MCP SDK; stdio и Streamable HTTP | 2 | — |
+| F2-1 | Каркас `mcp/` на TypeScript + MCP SDK; **stdio** для Claude Code | 2 | — |
 | F2-2 | Инструменты: `assess_dependency`, `get_repo_report`, `start_scan`, `get_scan`, `list_indexed_repos`, `batch_summaries`, `get_badge` | 2 | F2-1 |
 | F2-3 | Детерминированная трактовка: `level` → category, recommendation, reasons из `verdict`/`checks[].summary`; пороги в конфиге MCP | 1 | F2-2 |
 | F2-4 | Guardrails: `mocked`/`insufficient_data`/покрытие архива, дисклеймер, без внешних запросов | 1 | F2-3 |
-| F2-5 | Конфиг Claude Code (`.mcp.json`/`claude mcp add`), Compose, Dockerfile, тесты с fake core | 1–2 | F2-4 |
+| F2-5 | Конфиг Claude Code (`.mcp.json`/`claude mcp add`), Compose, Dockerfile, тесты с fake core; **Streamable HTTP — P2, не входит в DoD PoC** | 1–2 | F2-4 |
 
 **Схема ответа `assess_dependency`:**
 
@@ -168,11 +168,12 @@ index, badge. Внешняя LLM не нужна: интерпретация с�
 - Claude Code:
   ```bash
   claude mcp add star-guard -- node mcp/dist/index.js
-  # env: STAR_GUARD_API_URL, MCP_TRANSPORT=stdio|http
+  # env: STAR_GUARD_API_URL; транспорт stdio
   ```
-- **DoD:** MCP подключается в Claude Code; индексный репозиторий отдаёт структуру
-  выше; внешний — запускает скан; stdio и HTTP работают; тесты/документация.
-  Никаких API-ключей LLM и исходящих запросов, кроме нашего сервиса.
+- **DoD:** MCP подключается в Claude Code по stdio; индексный репозиторий отдаёт
+  структуру выше; внешний — запускает скан; тесты/документация. Никаких
+  API-ключей LLM и исходящих запросов, кроме нашего сервиса. Streamable HTTP —
+  отдельная P2-фича после PoC.
 
 ### F3. Парсинг, 10k top-tier и long-tail без OOM
 
@@ -183,7 +184,7 @@ index, badge. Внешняя LLM не нужна: интерпретация с�
 | F3-3 | Tiered-модель: top-10k compact + detail-1k actor-профили + long-tail counts/star IDs; primitive arrays | 4 | F3-2 |
 | F3-4 | Быстрый запрос: precomputed `totalStars`/rank, read-only `starsByMinute`, дедуп `event_id` | 2 | F3-3 |
 | F3-5 | C4 на 10k: инвертированный `actor→repos` или предвычисленные overlaps; candidate pool | 2 | F3-3 |
-| F3-6 | Memory budget 1 ГБ + бенчмарк: heap, build time, p95; eviction/backpressure | 2 | F3-3 |
+| F3-6 | Memory budget 1 ГБ + JVM `-Xmx1280m`; бенчмарк heap/build/p95; eviction/backpressure | 2 | F3-3 |
 
 **Реализация:**
 
@@ -195,8 +196,8 @@ index, badge. Внешняя LLM не нужна: интерпретация с�
 - `RepoIndexLifecycle` — атомарная подмена и освобождение старого snapshot.
 - Конфиг: `app.index.top-n: 10000`, `detail-tier-size: 1000`,
   `memory-budget-mb: 1024`, `max-per-repo-actors`, `parse-threads`.
-- **DoD:** 10k top-tier + long-tail; heap в 1 ГБ; парсер 2–5× быстрее;
-  p95 <100 мс; 160+ тестов; отчёт с цифрами.
+- **DoD:** 10k top-tier + long-tail; индекс ≤1 ГБ при JVM `-Xmx1280m`;
+  парсер 2–5× быстрее; p95 <100 мс; 160+ тестов; отчёт с цифрами.
 
 ### F4. Произвольный репозиторий: long-tail, добавление в индекс, 1–3 с
 
@@ -217,7 +218,7 @@ index, badge. Внешняя LLM не нужна: интерпретация с�
 **DoD:** добавление идемпотентно; warm-репозиторий ≤3 с; cold — 202; pinned
 переживает пересборку; OpenAPI/README/тесты/бенчмарк.
 
-### F5. GitHub preview для холодных репозиториев (отдельная фича, P2)
+### F5. GitHub preview для холодных репозиториев (отдельная фича, сразу после F4)
 
 **Цель:** даже если в GH Archive нет событий в окне, показать базовую статистику
 из GitHub REST API, пока полный score считается/недоступен.
@@ -253,12 +254,12 @@ index, badge. Внешняя LLM не нужна: интерпретация с�
 Этап 1 (2–3 дня): F3-1 парсер + F1-1/F1-2 API-поля (параллельно)
 Этап 2 (3–4 дня): F3-3 tiered-модель + F1-3 UI (popup/sidebar) + F1-4 тесты
 Этап 3 (3–4 дня): F4-1 long-tail + F4-2 add endpoint + F3-4/5/6
-Этап 4 (1–2 дня): F2 MCP + детерминированная трактовка
-Этап 5 (P2): F5 GitHub preview, F4-4/X-1…X-5, бенчмарки, демо
+Этап 4 (2–3 дня): F2 MCP (stdio) + F5 GitHub preview (параллельно)
+Этап 5: F4-4/X-1…X-5, бенчмарки, демо
 ```
 
-Ориентир: **28–36 человеко-дней**; 5 разработчиков — ~2 недели.
-Основной риск — F3-3/F4-1 (память и long-tail).
+Ориентир: сумма оценок задач **45–55 человеко-дней**; 5 разработчиков — ~2 недели
+при параллельной работе. Основной риск — F3-3/F4-1 (память и long-tail).
 
 | Роль | Зона |
 |------|------|
@@ -274,19 +275,20 @@ index, badge. Внешняя LLM не нужна: интерпретация с�
 
 | Риск | Митигация |
 |------|-----------|
-| Long-tail не влезает в 1 ГБ | memory budget + eviction/backpressure; long-tail без логинов/`ActorActivity`; top-n=10k |
-| 1–3 с недостижимы без событий в окне | честный 202 + async; F5 preview отдельной фичей |
+| Long-tail не влезает в 1 ГБ | memory budget + eviction/backpressure; long-tail без логинов/`ActorActivity`; top-n=10k; JVM `-Xmx1280m` |
+| 1–3 с недостижимы без событий в окне | честный 202 + async; F5 preview делаем сразу после F4 |
 | Интерпретация MCP воспринимается как «ИИ-вердикт» | явно писать, что это правило по порогам; дисклеймер «признаки, не доказательство» |
 | MCP-сканирование зависит от single-instance `ScanService` | один scan-backend или shared store перед масштабированием |
-| Приватность логинов | режим hash, лимит выборки |
+| Приватность логинов | режим hash, лимит выборки; в popup топ-5 + «ещё» |
 | C1 по умолчанию mock → «накрутка» не подсвечивается | для демо включать `app.scoring.checks.burst.mode=real`; иначе нейтральный «всплеск» |
 
-**Осталось согласовать:**
+**Зафиксировано (вопросы закрыты):**
 
-1. Точный memory budget — 1 ГБ на индекс принят; JVM heap ограничивать отдельно (`-Xmx`)?
-2. F5 включаем в ближайший спринт или после F1–F4?
-3. Показывать ли в popup полный список подозрительных аккаунтов или только топ-5 + «ещё»?
-4. MCP HTTP-транспорт: нужен ли внешний хостинг или достаточно stdio для Claude Code в PoC?
+1. Индекс — 1 ГБ, JVM — `-Xmx1280m` (индекс + ~20% на остальное).
+2. F5 (GitHub preview) делаем сразу после F4, не отдельным спринтом.
+3. В popup — топ-5 подозрительных аккаунтов + «ещё».
+4. MCP — только stdio; Streamable HTTP — P2 после PoC.
+5. Внешние LLM-запросы не делаем; трактовка детерминированная по порогам.
 
 ---
 
@@ -301,5 +303,6 @@ curl "http://localhost:8080/api/v1/index/repos?limit=10000"
 claude mcp add star-guard -- node mcp/dist/index.js
 ```
 
-Для F3/F4 — бенчмарк на синтетическом окне: build time, heap (≤1 ГБ),
-p95 ответа, размер top-tier/long-tail. Для F2 — fake core и проверка в Claude Code.
+Для F3/F4 — бенчмарк на синтетическом окне: build time, heap (`-Xmx1280m`,
+индекс ≤1 ГБ), p95 ответа, размер top-tier/long-tail. Для F2 — fake core и
+проверка в Claude Code через stdio.

@@ -68,7 +68,7 @@
 
     col.append(el('h2', {}, 'Остальные состояния'));
     const states = el('div', { className: 'grid' });
-    card(states, { kind: 'not_indexed', hours: 6 });
+    card(states, { kind: 'not_indexed', hours: 6, preview: S.preview });
     card(states, { kind: 'scanning', done: 2, total: 6, hours: 6 });
     card(states, { kind: 'no_data', hours: 6 });
     card(states, { kind: 'gone', hours: 6 });

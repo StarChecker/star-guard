@@ -147,6 +147,11 @@ async function handle(message) {
       if (repos.length === 0) return { ok: true, data: {} };
       return batch(repos.slice(0, 200), hours);
     }
+    case 'preview': {
+      if (!REPO_RE.test(message.repo || '')) return { ok: false, code: 'BAD_REPO' };
+      const [owner, name] = message.repo.split('/');
+      return call(`/api/v1/preview/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`);
+    }
     case 'scanStart':
       if (!REPO_RE.test(message.repo || '')) return { ok: false, code: 'BAD_REPO' };
       return scanStart(message.repo, hours);

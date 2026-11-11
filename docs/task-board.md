@@ -66,8 +66,8 @@
 
 | ID | Задача | Владелец | Оценка | Dep | Статус | Ветка / PR |
 |----|--------|----------|--------|-----|--------|------------|
-| F4-1 | Long-tail индекс всех репозиториев окна | Dev 2 · `@Ar6yZxZ` | 4 | F3-3 | 🟡 | `feat/f4-1-long-tail-index` поверх F3-2 (PR #14): long-tail из `HourDigest`, без ожидания F3-3 — формат хранения потом меняет F3-3 |
-| F4-2 | `POST/PUT /api/v1/index/repos`: добавить/закрепить | Dev 2 · `@Ar6yZxZ` | 2 | F4-1 | 🟡 | `feat/f4-2-index-repos-endpoint` поверх F4-1 |
+| F4-1 | Long-tail индекс всех репозиториев окна | Dev 2 · `@Ar6yZxZ` | 4 | F3-3 | 🟡 | `feat/f4-1-long-tail-index` · [PR #18](https://github.com/StarChecker/star-guard/pull/18) на ревью (поверх #14): long-tail из `HourDigest`, без ожидания F3-3 — формат хранения потом меняет F3-3 |
+| F4-2 | `POST/PUT /api/v1/index/repos`: добавить/закрепить | Dev 2 · `@Ar6yZxZ` | 2 | F4-1 | 🟡 | `feat/f4-2-index-repos-endpoint` · [PR #19](https://github.com/StarChecker/star-guard/pull/19) на ревью (поверх #18); TTL и приоритетный скан — F4-3 |
 | F4-3 | Приоритетный scan-job, TTL pinned, выживание при rebuild | Dev 3 · `@mpstrkv` | 2 | F4-2 | ⬜ | — |
 | F4-4 | Тесты ≤3 с, cold 202, идемпотентность, benchmark | Dev 5 · `@writenowme` | 1 | F4-1…F4-3 | ⬜ | — |
 

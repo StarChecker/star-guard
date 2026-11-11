@@ -1152,3 +1152,7 @@ window.STAR_GUARD_SAMPLES = {
   }
  }
 };
+window.STAR_GUARD_SAMPLES.preview = {"repo": {"owner": "acme", "name": "cli-helper", "full_name": "acme/cli-helper"},
+  "source": "github", "partial": true, "note": "Нет данных GH Archive: базовая статистика GitHub, без оценки.",
+  "stars": 1840, "forks": 96, "open_issues": 23, "watchers": 31, "contributors": 14, "archived": false, "fork": false,
+  "created_at": "2023-04-02T10:00:00Z", "pushed_at": "2026-11-09T18:20:00Z", "fetched_at": "2026-11-11T15:00:00Z", "cached": false};

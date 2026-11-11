@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Сборка индекса топ-1000</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:  #f3f7fb;
+      --color-ink:    #1b2a3a;
+      --color-muted:  #46627f;
+      --color-accent: #1859b0;
+      --font-sans:    'Geist', system-ui, sans-serif;
+      --font-serif:   'Noto Serif', 'Instrument Serif', serif;
+      --font-mono:    'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 960px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 0.5rem;
+    }
+    .note { color: var(--color-muted); font-size: 0.85rem; max-width: 72ch; margin-bottom: 1.5rem; line-height: 1.5; }
+    svg { width: 100%; min-width: 920px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Flowchart · Star Guard</p>
+    <h1>Сборка индекса топ-1000</h1>
+    <p class="note">Сборка идёт в фоне на старте и по cron. Пока индекс не готов, API отвечает 503. При ошибке остаётся прежний snapshot. С app.archive.window-end окно фиксировано, поэтому индекс строится один раз.</p>
+    <div class="diagram-container">
+      <svg viewBox="0 0 920 636" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="star-guard-index-title star-guard-index-desc">
+        <title id="star-guard-index-title">Сборка индекса топ-1000</title>
+        <desc id="star-guard-index-desc">Индекс строится в два прохода по часовым дампам GH Archive: сначала выбирается топ-N по звёздам и собирается StarIndex, затем агрегируются только выбранные репозитории, и готовый snapshot атомарно подменяет прежний.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#46627f"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1859b0"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#16707f"/></marker>
+          
+        </defs>
+        <rect width="100%" height="100%" fill="#f3f7fb"/>
+<path d="M 440,88 V 112" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 560,144 H 680" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 440,176 V 208" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 440,264 V 296" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 440,352 V 384" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 560,416 H 680" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 440,448 V 480" fill="none" stroke="#1859b0" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+<path d="M 200,236 H 320" fill="none" stroke="#16707f" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+<path d="M 200,324 H 320" fill="none" stroke="#16707f" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+<rect x="610.0" y="124" width="20" height="12" rx="2" fill="#f3f7fb"/>
+<text x="620.0" y="133" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">ДА</text>
+<rect x="448.0" y="186" width="28" height="12" rx="2" fill="#f3f7fb"/>
+<text x="462.0" y="195" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">НЕТ</text>
+<rect x="448.0" y="274" width="36" height="12" rx="2" fill="#f3f7fb"/>
+<text x="466.0" y="283" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">TOP-N</text>
+<rect x="606.0" y="396" width="28" height="12" rx="2" fill="#f3f7fb"/>
+<text x="620.0" y="405" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">НЕТ</text>
+<rect x="448.0" y="458" width="20" height="12" rx="2" fill="#f3f7fb"/>
+<text x="458.0" y="467" fill="#1859b0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">ДА</text>
+<rect x="228.0" y="216" width="64" height="12" rx="2" fill="#f3f7fb"/>
+<text x="260.0" y="225" fill="#16707f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">WATCHEVENT</text>
+<rect x="222.0" y="304" width="76" height="12" rx="2" fill="#f3f7fb"/>
+<text x="260.0" y="313" fill="#16707f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">ТОЛЬКО ТОП-N</text>
+<rect x="320" y="40" width="240" height="48" rx="20" fill="#f3f7fb"/>
+<rect x="320" y="40" width="240" height="48" rx="20" fill="rgba(27,42,58,0.03)" stroke="rgba(27,42,58,0.30)" stroke-width="1"/>
+<text x="440.0" y="62.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Старт или cron</text>
+<text x="440.0" y="77.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">0 10 * * * * UTC</text>
+<polygon points="440,112 560,144 440,176 320,144" fill="#f3f7fb"/>
+<polygon points="440,112 560,144 440,176 320,144" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="440" y="142" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Окно фиксировано</text>
+<text x="440" y="156" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">и индекс готов?</text>
+<rect x="680" y="120" width="200" height="48" rx="20" fill="#f3f7fb"/>
+<rect x="680" y="120" width="200" height="48" rx="20" fill="rgba(27,42,58,0.03)" stroke="rgba(27,42,58,0.30)" stroke-width="1"/>
+<text x="780.0" y="142.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Пропуск</text>
+<text x="780.0" y="157.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">window-end задан</text>
+<rect x="320" y="208" width="240" height="56" rx="6" fill="#f3f7fb"/>
+<rect x="320" y="208" width="240" height="56" rx="6" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="440.0" y="233.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Проход 1: топ-N по звёздам</text>
+<text x="440.0" y="248.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">звёзды по репо, StarIndex для C4</text>
+<rect x="320" y="296" width="240" height="56" rx="6" fill="#f3f7fb"/>
+<rect x="320" y="296" width="240" height="56" rx="6" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="440.0" y="321.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Проход 2: агрегаты топа</text>
+<text x="440.0" y="336.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">счётчики, минуты, акторы</text>
+<polygon points="440,384 560,416 440,448 320,416" fill="#f3f7fb"/>
+<polygon points="440,384 560,416 440,448 320,416" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="440" y="414" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Загружен хотя бы</text>
+<text x="440" y="428" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">один час?</text>
+<rect x="680" y="392" width="200" height="48" rx="20" fill="#f3f7fb"/>
+<rect x="680" y="392" width="200" height="48" rx="20" fill="rgba(27,42,58,0.03)" stroke="rgba(27,42,58,0.30)" stroke-width="1"/>
+<text x="780.0" y="414.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Прежний snapshot</text>
+<text x="780.0" y="429.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">ошибка сборки в лог</text>
+<rect x="320" y="480" width="240" height="56" rx="20" fill="#f3f7fb"/>
+<rect x="320" y="480" width="240" height="56" rx="20" fill="rgba(24,89,176,0.08)" stroke="#1859b0" stroke-width="1"/>
+<text x="440.0" y="506.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Атомарная подмена</text>
+<text x="440.0" y="521.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">RepoIndex.swap(snapshot)</text>
+<rect x="40" y="208" width="160" height="144" rx="6" fill="#f3f7fb"/>
+<rect x="40" y="208" width="160" height="144" rx="6" fill="rgba(27,42,58,0.03)" stroke="rgba(27,42,58,0.30)" stroke-width="1"/>
+<rect x="48" y="214" width="28" height="12" rx="2" fill="transparent" stroke="#526d89" stroke-opacity="0.5" stroke-width="0.8"/>
+<text x="62.0" y="223" fill="#526d89" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
+<text x="120.0" y="274.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">GH Archive</text>
+<text x="120.0" y="289.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">часовые gzip-дампы</text>
+<text x="120.0" y="302.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">2 прохода по окну</text>
+<line x1="40" y1="572" x2="880" y2="572" stroke="rgba(27,42,58,0.10)" stroke-width="0.8"/>
+<text x="40" y="588" fill="#46627f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.18em">ЛЕГЕНДА</text>
+<rect x="40" y="603" width="24" height="12" rx="6" fill="rgba(27,42,58,0.03)" stroke="rgba(27,42,58,0.30)" stroke-width="1"/>
+<text x="72" y="612" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Старт / финал</text>
+<rect x="166.3" y="604" width="14" height="10" rx="2" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="186.3" y="612" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Шаг</text>
+<polygon points="229.60000000000002,609 241.60000000000002,603 253.60000000000002,609 241.60000000000002,615" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="261.6" y="612" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Решение</text>
+<rect x="325.3" y="604" width="14" height="10" rx="2" fill="rgba(27,42,58,0.03)" stroke="rgba(27,42,58,0.30)" stroke-width="1"/>
+<text x="345.3" y="612" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Источник</text>
+<line x1="414.1" y1="609" x2="442.1" y2="609" stroke="#16707f" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+<text x="450.1" y="612" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Чтение дампов</text>
+<line x1="544.4" y1="609" x2="572.4" y2="609" stroke="#1859b0" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+<text x="580.4" y="612" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Успешная сборка</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

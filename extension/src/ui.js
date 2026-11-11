@@ -398,8 +398,9 @@ details.evidence[open] summary::before { content: '▾ '; }
       case 'not_indexed':
         return [h('div', { class: 'state' },
           h('p', {}, `Репозиторий не входит в топ-1000 по звёздам за последние ${state.hours} ч, готовой оценки нет.`),
-          h('p', {}, 'Можно проверить его напрямую по GH Archive — это займёт 1–3 минуты.'),
-          h('button', { class: 'primary', onclick: actions.onScan }, 'Проверить'))];
+          h('p', {}, 'Можно проверить его напрямую по GH Archive — это займёт 1–3 минуты (за 24 ч — дольше).'),
+          h('button', { class: 'primary', onclick: actions.onScan }, `Проверить за ${state.hours} ч`), ' ',
+          state.hours < 24 && actions.onScanDay ? h('button', { onclick: actions.onScanDay }, 'За 24 ч') : null)];
       case 'scanning': {
         const pct = state.total ? Math.round((state.done / state.total) * 100) : 0;
         return [h('div', { class: 'state' },
@@ -409,7 +410,11 @@ details.evidence[open] summary::before { content: '▾ '; }
       }
       case 'no_data':
         return [h('div', { class: 'state' },
-          h('p', {}, `За последние ${state.hours} ч у репозитория не было событий в GH Archive — оценивать нечего.`))];
+          h('p', {}, `За последние ${state.hours} ч у репозитория не было ни звёзд, ни других публичных событий в GH Archive — оценивать нечего.`),
+          h('p', {}, 'Для небольших проектов это нормально. Накрутка видна по всплеску звёзд, поэтому стоит смотреть окно, где они были.'),
+          state.hours < 24 && actions.onScanDay
+            ? h('button', { class: 'primary', onclick: actions.onScanDay }, 'Проверить за 24 ч')
+            : null)];
       case 'index_not_ready':
         return [h('div', { class: 'state' },
           h('p', {}, 'Сервер прогревает индекс популярных репозиториев. Обычно это пара минут.'),

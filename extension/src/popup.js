@@ -14,7 +14,8 @@
     chrome.runtime.sendMessage(message, (response) => resolve(response || { ok: false, code: 'NO_RESPONSE' })));
 
   const actions = {
-    onScan: () => scan(),
+    onScan: () => scan(hours),
+    onScanDay: () => scan(24),
     onRetry: () => send({ type: 'clearCache' }).then(load),
     onOpenOptions: () => chrome.runtime.openOptionsPage(),
   };
@@ -36,17 +37,20 @@
     render(toState(await send({ type: 'report', repo, hours })));
   }
 
-  async function scan() {
-    render({ kind: 'scanning', done: 0, total: hours, hours });
-    const started = await send({ type: 'scanStart', repo, hours });
+  async function scan(scanHours) {
+    render({ kind: 'scanning', done: 0, total: scanHours, hours: scanHours });
+    const started = await send({ type: 'scanStart', repo, hours: scanHours });
     if (!started.ok) return render(toState(started));
     const poll = async () => {
       const status = await send({ type: 'scanStatus', id: started.data.id });
       if (!status.ok) return render(toState(status));
       const job = status.data;
       if (job.status === 'done') return render({ kind: 'report', data: job.report });
-      if (job.status === 'failed') return render(toState({ ok: false, code: job.error_code, message: job.error_message }));
-      render({ kind: 'scanning', done: job.hours_done, total: job.hours_total, hours });
+      if (job.status === 'failed') {
+        const failed = toState({ ok: false, code: job.error_code, message: job.error_message });
+        return render({ ...failed, hours: job.hours_total });
+      }
+      render({ kind: 'scanning', done: job.hours_done, total: job.hours_total, hours: job.hours_total });
       setTimeout(poll, 1500);
     };
     poll();

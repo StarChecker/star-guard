@@ -99,9 +99,9 @@
     }
   }
 
-  async function startScan() {
+  async function startScan(requestedHours) {
     const repo = currentRepo;
-    const hours = settings.hours;
+    const hours = requestedHours || settings.hours;
     cardState = { kind: 'scanning', done: 0, total: hours, hours };
     renderRepo();
     const response = await send({ type: 'scanStart', repo, hours });
@@ -118,7 +118,8 @@
     followScan(repo, response.data.id, hours);
   }
 
-  function followScan(repo, id, hours) {
+  function followScan(repo, id, scanHours) {
+    let hours = scanHours;
     clearTimeout(scanTimer);
     const tick = async () => {
       if (repo !== currentRepo) return;
@@ -131,6 +132,7 @@
         return;
       }
       const scan = response.data;
+      hours = scan.hours_total || hours;
       if (scan.status === 'done') {
         await forgetScan(repo);
         cardState = { kind: 'report', data: scan.report };
@@ -156,6 +158,7 @@
 
   const actions = {
     onScan: () => startScan(),
+    onScanDay: () => startScan(24),
     onRetry: () => { send({ type: 'clearCache' }).then(() => loadRepo(currentRepo)); },
     onOpenOptions: () => window.open(chrome.runtime.getURL('options.html'), '_blank'),
     onClose: () => { floatingOpen = false; floatingClosed = true; renderRepo(); },

@@ -63,6 +63,9 @@ app:
     cache-ttl: 24h
     cache-max-size: 100000
     rate-limit-pause: 1m
+    preview:                  # F5: GET /api/v1/preview/{owner}/{name} — базовая статистика GitHub REST
+      enabled: true           # токен необязателен (без него — 60 запросов в час)
+      cache-ttl: 15m
     history:                  # анализ любого репозитория по истории GitHub (нужен GITHUB_TOKEN)
       max-days: 30            # глубина истории
       max-stars: 3000         # сколько последних звёзд загружать (по 100 за запрос GraphQL)

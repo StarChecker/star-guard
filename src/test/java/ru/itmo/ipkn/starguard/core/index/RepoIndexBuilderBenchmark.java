@@ -10,8 +10,10 @@ import ru.itmo.ipkn.starguard.core.archive.HourReadResult;
 import ru.itmo.ipkn.starguard.core.archive.TimeWindowCalculator;
 import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
 import ru.itmo.ipkn.starguard.core.config.RepoIndexProperties;
+import ru.itmo.ipkn.starguard.core.domain.DataSource;
 import ru.itmo.ipkn.starguard.core.domain.EventType;
 import ru.itmo.ipkn.starguard.core.domain.GhEvent;
+import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -126,6 +128,54 @@ class RepoIndexBuilderBenchmark {
         System.out.println(report);
         Files.writeString(Path.of("target", "index-builder-benchmark.md"), report);
         assertThat(retainedSnapshot.repos()).isNotEmpty();
+    }
+
+    /**
+     * F4-1: ответ индекса для каждого репозитория long-tail (вне топа, но с событиями в окне):
+     * поиск по дайджестам + композиция подокна, без скоринга — он одинаков для топа и long-tail.
+     */
+    @Test
+    void longTailLookupLatency() throws IOException {
+        Instant start = Instant.parse(System.getProperty("gharchive.window.start", "2026-11-10T12:00:00Z"));
+        LocalDumps dumps = LocalDumps.load(Path.of(System.getProperty("gharchive.window")), start, 6);
+        Clock clock = Clock.fixed(start.plus(Duration.ofHours(8)), ZoneOffset.UTC);
+        RepoIndexSnapshot snapshot = builder(dumps, clock).build();
+        RepoIndex index = new RepoIndex();
+        index.swap(snapshot);
+        IndexRepoDataProvider provider = new IndexRepoDataProvider(index, ARCHIVE, clock);
+
+        List<RepoRef> tail = snapshot.digests().values().stream()
+                .flatMap(digest -> digest.displayNames().entrySet().stream())
+                .filter(entry -> !snapshot.repos().containsKey(entry.getKey()))
+                .map(Map.Entry::getValue)
+                .distinct()
+                .filter(name -> name.indexOf('/') > 0 && name.indexOf('/') < name.length() - 1)
+                .map(name -> new RepoRef(name.substring(0, name.indexOf('/')), name.substring(name.indexOf('/') + 1)))
+                .toList();
+        for (RepoRef repo : tail) {
+            provider.load(repo, INDEX.windowHours());
+        }
+        long[] nanos = new long[tail.size()];
+        for (int i = 0; i < tail.size(); i++) {
+            long startedAt = System.nanoTime();
+            var data = provider.load(tail.get(i), INDEX.windowHours());
+            nanos[i] = System.nanoTime() - startedAt;
+            assertThat(data.source().tier()).isEqualTo(DataSource.Tier.LONG_TAIL);
+        }
+        Arrays.sort(nanos);
+
+        String report = """
+                Long-tail: %d репозиториев вне топ-%d (всего в окне %d); ответ индекса без скоринга.
+
+                | p50 | p95 | p99 | max |
+                |---:|---:|---:|---:|
+                | %.3f мс | %.3f мс | %.3f мс | %.3f мс |
+                """.formatted(tail.size(), INDEX.topN(), snapshot.windowRepoCount(),
+                nanos[nanos.length / 2] / 1e6, nanos[(int) (nanos.length * 0.95)] / 1e6,
+                nanos[(int) (nanos.length * 0.99)] / 1e6, nanos[nanos.length - 1] / 1e6);
+        System.out.println(report);
+        Files.writeString(Path.of("target", "long-tail-benchmark.md"), report);
+        assertThat(tail).hasSizeGreaterThan(snapshot.repos().size());
     }
 
     /** Прежняя схема F3-1: проход 1 — звёзды всех часов, проход 2 — топ-N по каждому часу. */

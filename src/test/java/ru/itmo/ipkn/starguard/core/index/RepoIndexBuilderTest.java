@@ -9,8 +9,10 @@ import ru.itmo.ipkn.starguard.core.archive.TransientArchiveException;
 import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
 import ru.itmo.ipkn.starguard.core.config.RepoIndexProperties;
 import ru.itmo.ipkn.starguard.core.domain.ActorActivity;
+import ru.itmo.ipkn.starguard.core.domain.DataSource;
 import ru.itmo.ipkn.starguard.core.domain.EventType;
 import ru.itmo.ipkn.starguard.core.domain.GhEvent;
+import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -92,6 +94,15 @@ class RepoIndexBuilderTest {
         assertThat(lastHour.actors("a/one")).containsExactly(1L);
         assertThat(lastHour.actors("a/two")).containsExactly(5L);
         assertThat(lastHour.actors("b/three")).isEmpty();
+
+        // long-tail (F4-1): репозиторий вне топ-2 отдаётся из дайджестов часов
+        IndexHit tail = snapshot.lookup(new RepoRef("C", "Four")).orElseThrow();
+        assertThat(tail.tier()).isEqualTo(DataSource.Tier.LONG_TAIL);
+        assertThat(tail.repo().repo().fullName()).isEqualTo("c/four");
+        assertThat(tail.repo().hours()).extracting(hour -> hour.counts().stars()).containsExactly(1, 0, 0);
+        assertThat(snapshot.lookup(new RepoRef("a", "one")).orElseThrow().tier()).isEqualTo(DataSource.Tier.TOP);
+        assertThat(snapshot.lookup(new RepoRef("nobody", "here"))).isEmpty();
+        assertThat(snapshot.windowRepoCount()).isEqualTo(4);
     }
 
     @Test

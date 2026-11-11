@@ -17,6 +17,9 @@ public record TopReposResponse(
         int skippedDeleted,
         @Schema(description = "Сколько строк пропущено фильтром max_level")
         int skippedByLevel,
+        @Schema(description = "Сколько репозиториев с событиями в окне отдаётся из индекса: "
+                + "топ-N + long-tail (source.tier в отчёте)", example = "16339")
+        int windowRepos,
         List<TopRepoDto> repos
 ) {
 

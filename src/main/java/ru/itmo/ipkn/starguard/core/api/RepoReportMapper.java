@@ -67,7 +67,10 @@ public class RepoReportMapper {
                         report.source().type().name().toLowerCase(Locale.ROOT),
                         report.source().starsSampled(),
                         report.source().starsTotal(),
-                        report.source().coverageFrom()));
+                        report.source().coverageFrom(),
+                        report.source().tier() == null
+                                ? null
+                                : report.source().tier().name().toLowerCase(Locale.ROOT)));
     }
 
     private CheckDto toCheck(CheckContribution contribution, RepoStats stats) {

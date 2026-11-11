@@ -74,8 +74,22 @@ class IndexedCoreIntegrationTest {
     }
 
     @Test
-    void returnsFast404ForRepositoryOutsideIndex() throws Exception {
-        mockMvc.perform(get("/api/v1/repos/a/two"))
+    void servesRepositoryOutsideTopFromLongTail() throws Exception {
+        // a/two не в топ-2, но звезда в окне у него есть — отчёт из дайджестов часов (F4-1).
+        mockMvc.perform(get("/api/v1/repos/A/Two").param("hours", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.repo.full_name").value("A/Two"))
+                .andExpect(jsonPath("$.stats.stars").value(1))
+                .andExpect(jsonPath("$.source.type").value("gh_archive_index"))
+                .andExpect(jsonPath("$.source.tier").value("long_tail"));
+        mockMvc.perform(get("/api/v1/repos/a/one").param("hours", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.source.tier").value("top"));
+    }
+
+    @Test
+    void returnsFast404ForRepositoryWithoutEventsInWindow() throws Exception {
+        mockMvc.perform(get("/api/v1/repos/nobody/silent"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("REPO_NOT_INDEXED"));
     }

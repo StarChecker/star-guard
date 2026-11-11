@@ -170,8 +170,9 @@ public class RepoIndexBuilder {
             repos.put(key, new IndexedRepo(toRepoRef(displayNames.getOrDefault(key, key)), perHour));
         }
 
+        // Дайджесты отдаются в снимок целиком: из них отвечает long-tail (F4-1).
         RepoIndexSnapshot snapshot = new RepoIndexSnapshot(
-                window, clock.instant(), hoursLoaded, missingHours, parseErrors, repos, starIndexByHour);
+                window, clock.instant(), hoursLoaded, missingHours, parseErrors, repos, starIndexByHour, digests);
         long millis = Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
         log.info("Built repo index: {} repos, window={}, hoursLoaded={}, missing={}, parseErrors={}, "
                         + "starIndexHours={}, parsedHours={}, reusedHours={}, digestRepos={}, "

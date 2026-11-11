@@ -17,7 +17,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Отдаёт отчёт из предвычисленного индекса; вне индекса — быстрый 404. */
+/**
+ * Отдаёт отчёт из предвычисленного индекса: топ-N или long-tail окна (любой репозиторий
+ * с событиями в окне). Если событий в окне не было — быстрый 404.
+ */
 public class IndexRepoDataProvider implements RepoDataProvider {
 
     private final RepoIndex repoIndex;
@@ -46,11 +49,12 @@ public class IndexRepoDataProvider implements RepoDataProvider {
                             .formatted(snapshot.window().hours()));
         }
 
-        IndexedRepo indexed = snapshot.find(repo.fullName())
+        // Топ-N, а вне топа — long-tail окна из почасовых дайджестов (F4-1).
+        IndexHit hit = snapshot.lookup(repo)
                 .orElseThrow(() -> new RepoNotIndexedException(repo, snapshot.window()));
         TimeWindow window = snapshot.windowFor(hours);
         RepoAggregate aggregate = RepoStatsComposer.compose(
-                repo, window, indexed.hours(), clock, snapshot.starIndex(window));
+                repo, window, hit.repo().hours(), clock, snapshot.starIndex(window));
 
         List<Instant> missing = snapshot.missingHours().stream()
                 .filter(hour -> !hour.isBefore(window.from()) && hour.isBefore(window.to()))
@@ -62,8 +66,10 @@ public class IndexRepoDataProvider implements RepoDataProvider {
                 missing,
                 snapshot.parseErrors(),
                 true);
-        return new RepoData(window, aggregate, archive, snapshot.rank(repo.fullName()),
-                starMarks(snapshot, repo, window), DataSource.index());
+        // Место в топе нужно только топу: по нему решается, дозапрашивать ли возраст аккаунтов (C2).
+        Integer rank = hit.tier() == DataSource.Tier.TOP ? snapshot.rank(repo.fullName()) : null;
+        return new RepoData(window, aggregate, archive, rank,
+                starMarks(snapshot, repo, window), DataSource.index(hit.tier()));
     }
 
     /** Звёзды подокна с точностью до часа: индекс хранит акторов по часам. */

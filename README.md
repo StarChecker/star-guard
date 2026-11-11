@@ -202,7 +202,7 @@ curl "http://localhost:8080/api/v1/repos/demo/organic-app?hours=3"
 ```
 
 Сообщение — `no signs of fake stars · 7/100`, `suspicious stars · 72/100` и т. д.;
-для репозитория вне индекса — серое `not tracked`.
+для репозитория без событий в окне индекса (нет ни в топе, ни в long-tail) — серое `not tracked`.
 
 ### Расширение и Action
 

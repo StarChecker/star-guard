@@ -36,8 +36,11 @@ RepoIndexSnapshot (immutable) ── атомарная подмена RepoIndex
         │
 GET /api/v1/repos/... ──► IndexRepoDataProvider ──► RepoStatsComposer
         │                     (почасовые агрегаты → нужное подокно hours)
-        └─ вне индекса → 404 REPO_NOT_INDEXED
-           индекс строится → 503 INDEX_NOT_READY
+        ├─ топ-N              → source.tier = top
+        ├─ вне топа, но есть
+        │  события в окне     → long-tail из дайджестов, source.tier = long_tail (F4-1)
+        └─ событий в окне нет → 404 REPO_NOT_INDEXED
+           индекс строится    → 503 INDEX_NOT_READY
 ```
 
 - **Топ-1000** считается по числу `WatchEvent` за окно; тай-брейк — по имени.
@@ -73,7 +76,7 @@ app:
 
 | Ситуация | HTTP | `code` |
 |----------|------|--------|
-| Репозиторий вне топ-N | 404 | `REPO_NOT_INDEXED` |
+| У репозитория нет событий в окне (нет ни в топ-N, ни в long-tail) | 404 | `REPO_NOT_INDEXED` |
 | Индекс ещё не готов / отключён | 503 | `INDEX_NOT_READY` |
 | `hours` больше окна индекса | 400 | `INVALID_REQUEST` |
 | Ошибка загрузки/разбора дампа при сборке | — | час попадает в `missing_hours`, сборка продолжается |
@@ -84,8 +87,9 @@ app:
 mvn clean test                     # 60 тестов, офлайн
 mvn spring-boot:run                # HTTP-режим, индекс прогревается в фоне
 curl "http://localhost:8080/api/v1/index/repos?limit=10"
-curl "http://localhost:8080/api/v1/repos/<из топа>?hours=6"
-curl "http://localhost:8080/api/v1/repos/<не из топа>"   # 404 REPO_NOT_INDEXED
+curl "http://localhost:8080/api/v1/repos/<из топа>?hours=6"          # source.tier = top
+curl "http://localhost:8080/api/v1/repos/<вне топа, но активен>"      # source.tier = long_tail
+curl "http://localhost:8080/api/v1/repos/<без событий в окне>"        # 404 REPO_NOT_INDEXED
 ```
 
 ## Ограничения PoC
@@ -95,8 +99,10 @@ curl "http://localhost:8080/api/v1/repos/<не из топа>"   # 404 REPO_NOT_
   минуты ([отчёт F3-2](f3-2-hourly-aggregates.md));
 - дайджесты держат агрегаты всех репозиториев часов окна (сейчас ~7 МБ на 6 часов);
   уровни top-tier / long-tail и бюджет памяти — задачи F3-3 и F3-6;
-- в индекс попадают только репозитории с наибольшим числом звёзд за окно;
-- случайный репозиторий вне топа намеренно не сканируется — это и есть
-  источник предсказуемой latency;
+- в топ попадают репозитории с наибольшим числом звёзд за окно; остальные репозитории
+  с событиями в окне отдаются из long-tail ([отчёт F4-1](f4-1-long-tail.md)) с той же
+  полнотой данных, но без дозапроса возраста аккаунтов из GitHub (он только для топа);
+- репозиторий без событий в окне намеренно не сканируется на лету — это и есть
+  источник предсказуемой latency; для него есть `POST /api/v1/scans`;
 - для реального C2/C4 нужен расширенный snapshot (дата создания аккаунта,
   глобальный индекс actor→repos); сейчас это задачи отдельных веток.

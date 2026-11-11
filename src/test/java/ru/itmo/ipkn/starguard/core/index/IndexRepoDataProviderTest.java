@@ -1,8 +1,10 @@
 package ru.itmo.ipkn.starguard.core.index;
 
 import org.junit.jupiter.api.Test;
+import ru.itmo.ipkn.starguard.core.archive.HourReadResult;
 import ru.itmo.ipkn.starguard.core.archive.InvalidWindowException;
 import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
+import ru.itmo.ipkn.starguard.core.domain.DataSource;
 import ru.itmo.ipkn.starguard.core.domain.EventCounts;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.StarIndex;
@@ -109,6 +111,40 @@ class IndexRepoDataProviderTest {
         IndexRepoDataProvider provider = new IndexRepoDataProvider(index, ARCHIVE, CLOCK);
         assertThatThrownBy(() -> provider.load(REPO, 4))
                 .isInstanceOf(InvalidWindowException.class);
+    }
+
+    @Test
+    void servesLongTailRepositoryFromHourDigests() {
+        int[] minutes = new int[60];
+        minutes[5] = 1;
+        RepoHourAggregate tailHour = new RepoHourAggregate(
+                H09, new EventCounts(3, 1, 0, 0, 2, 0, 0), minutes, 2, 1);
+        HourDigest digest08 = new HourDigest(H08, new HourReadResult(H08, 0, false, false),
+                Map.of(), Map.of(), StarIndex.empty());
+        HourDigest digest09 = new HourDigest(H09, new HourReadResult(H09, 0, false, false),
+                Map.of("tail/repo", tailHour), Map.of("tail/repo", "Tail/Repo"), StarIndex.empty());
+        RepoIndexSnapshot base = snapshot();
+        RepoIndexSnapshot withTail = new RepoIndexSnapshot(
+                base.window(), base.builtAt(), base.hoursLoaded(), base.missingHours(), base.parseErrors(),
+                base.repos(), Map.of(), Map.of(H08, digest08, H09, digest09));
+        RepoIndex index = new RepoIndex();
+        index.swap(withTail);
+        IndexRepoDataProvider provider = new IndexRepoDataProvider(index, ARCHIVE, CLOCK);
+
+        var tail = provider.load(new RepoRef("tail", "REPO"), 2);
+
+        assertThat(tail.source().tier()).isEqualTo(DataSource.Tier.LONG_TAIL);
+        assertThat(tail.starRank()).isNull();
+        assertThat(tail.aggregate().stats().counts().total()).isEqualTo(3);
+        assertThat(tail.aggregate().stats().counts().stars()).isEqualTo(1);
+        assertThat(tail.aggregate().snapshot().starsByMinute()[60 + 5]).isEqualTo(1);
+        assertThat(withTail.lookup(new RepoRef("tail", "repo")).orElseThrow().repo().repo().fullName())
+                .isEqualTo("Tail/Repo");
+        assertThat(withTail.windowRepoCount()).isEqualTo(2);
+
+        var top = provider.load(REPO, 2);
+        assertThat(top.source().tier()).isEqualTo(DataSource.Tier.TOP);
+        assertThat(top.starRank()).isEqualTo(1);
     }
 
     private static RepoIndexSnapshot snapshot() {

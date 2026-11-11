@@ -58,9 +58,11 @@ public class IndexController {
     @Operation(
             summary = "Топ репозиториев индекса",
             description = """
-                    Возвращает репозитории, для которых сервис может отдать статистику
-                    без полного сканирования GH Archive. Остальные запросы получают
-                    404 REPO_NOT_INDEXED. Пока индекс строится — 503 INDEX_NOT_READY.
+                    Возвращает топ-N репозиториев индекса по звёздам за окно. Отчёт без
+                    сканирования GH Archive отдаётся и для остальных репозиториев с событиями
+                    в окне (long-tail, source.tier = long_tail; их число — window_repos).
+                    Репозиторий без событий в окне получает 404 REPO_NOT_INDEXED.
+                    Пока индекс строится — 503 INDEX_NOT_READY.
 
                     По умолчанию удалённые на GitHub репозитории (часто это и есть накрутка,
                     которую GitHub уже вычистил) пропускаются: existing_only=false вернёт всё.
@@ -155,6 +157,7 @@ public class IndexController {
                 snapshot.parseErrors(),
                 skippedDeleted,
                 skippedByLevel,
+                snapshot.windowRepoCount(),
                 repos);
     }
 }

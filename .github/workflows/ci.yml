@@ -34,6 +34,22 @@ jobs:
       - name: Build and test
         run: mvn -B -ntp verify
 
+      # X-4: perf-smoke на синтетике (PerfSmokeTest) — отчёт в сводку job и артефактом
+      - name: Publish perf-smoke report
+        if: always()
+        run: |
+          if [ -f target/perf-smoke/report.md ]; then
+            cat target/perf-smoke/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload perf-smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-smoke
+          path: target/perf-smoke/
+          if-no-files-found: ignore
+
       - name: Upload surefire reports on failure
         if: failure()
         uses: actions/upload-artifact@v4

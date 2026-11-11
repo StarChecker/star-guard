@@ -126,6 +126,10 @@ details.evidence[open] summary::before { content: '▾ '; }
 
 .state { color: var(--sg-muted); }
 .state p { margin: 0 0 10px; }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 6px 0 4px; }
+.tile { border: 1px solid var(--sg-border-muted); border-radius: 6px; padding: 5px 8px; }
+.tile b { display: block; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--sg-fg); }
+.tile span { color: var(--sg-muted); font-size: 11px; line-height: 1.3; display: block; }
 .progress { height: 6px; border-radius: 3px; background: var(--sg-border-muted); overflow: hidden; margin: 8px 0 4px; }
 .progress > span { display: block; height: 100%; background: var(--sg-accent); transition: width .3s; }
 .skeleton { background: var(--sg-border-muted); border-radius: 6px; animation: sg-pulse 1.2s ease-in-out infinite; }
@@ -409,7 +413,40 @@ details.evidence[open] summary::before { content: '▾ '; }
     return `Данные: ${where}, ${time(report.window.from)}–${time(report.window.to)}.`;
   }
 
+  function compact(n) {
+    if (n === null || n === undefined) return '—';
+    if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace('.', ',') + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e4 ? 0 : 1).replace('.', ',') + 'k';
+    return String(n);
+  }
+
+  /** F5: базовая статистика GitHub, пока нет оценки (нет данных GH Archive). */
+  function previewView(preview) {
+    if (!preview) return null;
+    const tile = (value, label) => h('div', { class: 'tile' }, h('b', {}, value), h('span', {}, label));
+    return h('div', { class: 'section' },
+      h('div', { class: 'section-title' },
+        h('span', {}, 'Статистика GitHub'),
+        h('span', { class: 'aside' }, 'без оценки')),
+      h('div', { class: 'tiles' },
+        tile(compact(preview.stars), 'звёзд'),
+        tile(compact(preview.forks), 'форков'),
+        tile(compact(preview.open_issues), 'открытых issues'),
+        tile(compact(preview.contributors), 'контрибьюторов'),
+        tile(preview.created_at ? new Date(preview.created_at).getFullYear() : '—', 'создан'),
+        tile(preview.pushed_at ? day(preview.pushed_at) : '—', 'последний push')),
+      h('div', { class: 'note' }, 'Нет данных GH Archive: это текущие счётчики GitHub, а не оценка накрутки.'),
+      preview.archived ? h('div', { class: 'note warn' }, 'Репозиторий в архиве.') : null);
+  }
+
   function stateView(state, actions) {
+    const view = stateViewBody(state, actions);
+    const preview = ['not_indexed', 'no_data', 'scanning', 'index_not_ready'].includes(state.kind)
+      ? previewView(state.preview) : null;
+    return preview ? view.concat([preview]) : view;
+  }
+
+  function stateViewBody(state, actions) {
     switch (state.kind) {
       case 'loading':
         return [

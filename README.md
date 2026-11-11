@@ -139,11 +139,14 @@ curl "http://localhost:8080/api/v1/repos/demo/organic-app?hours=3"
 | `GET` | `/api/v1/badge/{owner}/{name}` | JSON для бейджа shields.io |
 | `POST` | `/api/v1/scans` | фоновый скан GH Archive для репозитория вне индекса → `id` |
 | `GET` | `/api/v1/scans/{id}` | статус скана (`hours_done` / `hours_total`), по готовности — отчёт |
-| `GET` | `/api/v1/index/repos` | репозитории индекса топ-N |
+| `GET` | `/api/v1/repos/{owner}/{name}/history` | анализ любого репозитория по истории GitHub за 30 дней (нужен `GITHUB_TOKEN`) |
+| `GET` | `/api/v1/preview/{owner}/{name}` | базовая статистика GitHub без оценки (`partial: true`), токен необязателен |
+| `GET` | `/api/v1/index/repos` | репозитории индекса топ-N; удалённые на GitHub скрыты, `with_score`, `max_level` |
 | `GET` | `/v3/api-docs` | OpenAPI 3 JSON |
 | `GET` | `/v3/api-docs.yaml` | OpenAPI 3 YAML |
 | `GET` | `/swagger-ui.html` | Swagger UI |
 | `GET` | `/actuator/health` | health check |
+| `GET` | `/actuator/prometheus` | метрики Prometheus: `starguard_index_*`, `starguard_scan_*`, JVM |
 
 Параметры запроса:
 
@@ -316,6 +319,51 @@ confidence = confidence * coverage                                # 0.9 * дол
 Обогащаются только репозитории из топ-`app.github.top-n` (100) индекса, не больше
 `max-lookups-per-request` (50) запросов на отчёт, ответы кэшируются на `cache-ttl` (24h),
 при rate limit запросы ставятся на паузу. Сама проверка C2 во внешние системы не ходит.
+
+### Холодные репозитории: preview и история GitHub
+
+Если у репозитория нет событий в GH Archive за окно, есть два пути.
+
+- **Preview** — `GET /api/v1/preview/{owner}/{name}`: звёзды, форки, открытые issues,
+  наблюдатели и контрибьюторы из GitHub REST (`/repos/{owner}/{repo}` и число страниц
+  `/contributors?per_page=1&anon=1` из заголовка `Link`). Это не оценка: в ответе
+  `source: github`, `partial: true` и пометка «нет данных GH Archive». Токен
+  необязателен (без него лимит GitHub — 60 запросов в час), ответы и «не найдено»
+  кэшируются на `app.github.preview.cache-ttl` (15 мин), при лимите запросы ставятся
+  на паузу до `X-RateLimit-Reset` (`503 GITHUB_RATE_LIMITED`). Удалённый или
+  приватный репозиторий — `404 REPO_NOT_FOUND_ON_GITHUB`. Выключается
+  `app.github.preview.enabled=false`.
+- **История GitHub** — `GET /api/v1/repos/{owner}/{name}/history` и скан по кнопке
+  «Проверить»: последние до `app.github.history.max-stars` (3000) звёзд за
+  `max-days` (30) дней со временем и возрастом аккаунтов, плюс форки, issues, PR и
+  коммиты из GraphQL. Это полноценный score (C4 неактивна: нет индекса звёзд по
+  другим репозиториям). Нужен `GITHUB_TOKEN`; без него скан идёт по GH Archive.
+
+Расширение показывает preview в карточке, пока оценки нет: «нет готовой оценки»,
+идёт скан, «нет событий за окно».
+
+### Метрики и память
+
+`/actuator/prometheus` (и `/actuator/metrics`) отдаёт метрики Star Guard:
+
+| Метрика | Что показывает |
+|---|---|
+| `starguard_index_build_duration_seconds{outcome}` | время сборки индекса топ-N |
+| `starguard_index_size`, `starguard_index_hours_loaded` | репозиториев и часов в индексе |
+| `starguard_index_star_pairs` | размер индекса звёзд C4 |
+| `starguard_index_age` | возраст индекса, секунды |
+| `starguard_index_memory_bytes`, `..._budget_bytes`, `..._over_budget` | heap после сборки индекса против бюджета |
+| `starguard_scan_latency_seconds{source,outcome}`, `starguard_scan_active` | сканы по запросу |
+
+Бюджет памяти индекса — `app.index.memory-budget-mb` (1024). После каждой подмены
+индекса сервис сравнивает занятый heap с бюджетом и при превышении пишет
+предупреждение и выставляет `over_budget = 1`; вытеснение по частям появится вместе с
+tiered-моделью (F3-3). Контейнер запускается с `-Xmx1280m -XX:+ExitOnOutOfMemoryError`
+(`JAVA_TOOL_OPTIONS`) и `mem_limit: 1600m`.
+
+`PerfSmokeTest` строит на синтетике индекс звёзд за 6 часов (~300k звёзд, ~40k
+репозиториев) и меряет путь запроса (агрегаты → score → таймлайн); отчёт —
+`target/perf-smoke/report.md`, в CI — в сводке job и артефактом `perf-smoke`.
 
 ### C3 «Дисбаланс звёзды/активность»
 

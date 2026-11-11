@@ -58,6 +58,6 @@ public class IndexRepoDataProvider implements RepoDataProvider {
                 missing,
                 snapshot.parseErrors(),
                 true);
-        return new RepoData(window, aggregate, archive);
+        return new RepoData(window, aggregate, archive, snapshot.rank(repo.fullName()));
     }
 }

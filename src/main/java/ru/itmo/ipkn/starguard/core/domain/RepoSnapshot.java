@@ -79,6 +79,11 @@ public record RepoSnapshot(
                 List.of(), starIndex);
     }
 
+    public RepoSnapshot withStarActorProfiles(List<ActorProfile> profiles) {
+        return new RepoSnapshot(repo, window, capturedAt, counts, uniqueActors, starActors, starsByMinute,
+                data, profiles, starIndex);
+    }
+
     @Override
     public int[] starsByMinute() {
         return starsByMinute == null ? null : starsByMinute.clone();

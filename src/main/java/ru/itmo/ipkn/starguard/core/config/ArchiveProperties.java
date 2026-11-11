@@ -3,6 +3,8 @@ package ru.itmo.ipkn.starguard.core.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
 /** Настройки клиента GH Archive и окна анализа. */
 @ConfigurationProperties(prefix = "app.archive")
@@ -16,7 +18,8 @@ public record ArchiveProperties(
         int retries,
         boolean failFast,
         Duration cacheTtl,
-        String fixtureLocation
+        String fixtureLocation,
+        Instant windowEnd
 ) {
 
     public enum Mode {
@@ -49,5 +52,6 @@ public record ArchiveProperties(
         fixtureLocation = fixtureLocation == null || fixtureLocation.isBlank()
                 ? "classpath:fixtures/gharchive/*.jsonl"
                 : fixtureLocation;
+        windowEnd = windowEnd == null ? null : windowEnd.truncatedTo(ChronoUnit.HOURS);
     }
 }

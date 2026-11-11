@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
+import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
 import ru.itmo.ipkn.starguard.core.config.RepoIndexProperties;
 
 import java.util.concurrent.ExecutorService;
@@ -24,6 +25,7 @@ public class RepoIndexLifecycle {
     private final RepoIndexBuilder builder;
     private final RepoIndex repoIndex;
     private final RepoIndexProperties properties;
+    private final boolean fixedWindow;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "repo-index-builder");
         thread.setDaemon(true);
@@ -35,9 +37,26 @@ public class RepoIndexLifecycle {
             RepoIndexBuilder builder,
             RepoIndex repoIndex,
             RepoIndexProperties properties) {
+        this(builder, repoIndex, properties, false);
+    }
+
+    public RepoIndexLifecycle(
+            RepoIndexBuilder builder,
+            RepoIndex repoIndex,
+            RepoIndexProperties properties,
+            ArchiveProperties archiveProperties) {
+        this(builder, repoIndex, properties, archiveProperties.windowEnd() != null);
+    }
+
+    private RepoIndexLifecycle(
+            RepoIndexBuilder builder,
+            RepoIndex repoIndex,
+            RepoIndexProperties properties,
+            boolean fixedWindow) {
         this.builder = builder;
         this.repoIndex = repoIndex;
         this.properties = properties;
+        this.fixedWindow = fixedWindow;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -49,6 +68,9 @@ public class RepoIndexLifecycle {
 
     @Scheduled(cron = "${app.index.refresh-cron:0 10 * * * *}", zone = "UTC")
     public void refreshAsync() {
+        if (fixedWindow && repoIndex.snapshot().isPresent()) {
+            return;
+        }
         if (!building.compareAndSet(false, true)) {
             log.info("Repository index build is already in progress; skipping trigger");
             return;

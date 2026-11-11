@@ -1,5 +1,6 @@
 package ru.itmo.ipkn.starguard.core.index;
 
+import ru.itmo.ipkn.starguard.core.domain.ActorActivity;
 import ru.itmo.ipkn.starguard.core.domain.DataAvailability;
 import ru.itmo.ipkn.starguard.core.domain.EventCounts;
 import ru.itmo.ipkn.starguard.core.domain.HourBucket;
@@ -13,7 +14,9 @@ import ru.itmo.ipkn.starguard.core.stats.StatsAggregator;
 
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Собирает отчёт за запрошенное подокно из почасовых агрегатов индекса.
@@ -62,6 +65,7 @@ public final class RepoStatsComposer {
         int starActors = 0;
         int[] starsByMinute = new int[hours * 60];
         List<HourBucket> hourBuckets = new ArrayList<>(hours);
+        Map<Long, ActorActivity> activities = new HashMap<>();
 
         for (int i = 0; i < hours; i++) {
             RepoHourAggregate hour = selected.get(i);
@@ -77,6 +81,7 @@ public final class RepoStatsComposer {
             starActors += hour.starActors();
             System.arraycopy(hour.starsByMinute(), 0, starsByMinute, i * 60, 60);
             hourBuckets.add(new HourBucket(hour.hour(), counts.stars()));
+            hour.actors().forEach(actor -> activities.merge(actor.actorId(), actor, ActorActivity::merge));
         }
 
         EventCounts counts = new EventCounts(
@@ -84,6 +89,7 @@ public final class RepoStatsComposer {
         int peakStars10m = StatsAggregator.maxSlidingSum(starsByMinute, BURST_WINDOW_MINUTES);
         RepoStats stats = new RepoStats(
                 repo, window, counts, uniqueActors, starActors, peakStars10m, hourBuckets);
+        List<ActorActivity> starActivities = ActorActivity.starredSorted(activities.values());
         RepoSnapshot snapshot = new RepoSnapshot(
                 repo,
                 window,
@@ -93,7 +99,8 @@ public final class RepoStatsComposer {
                 starActors,
                 starsByMinute,
                 DataAvailability.pocDefaults().withCrossRepoOverlap(index.available()),
+                ActorActivity.profiles(starActivities),
                 index);
-        return new RepoAggregate(stats, snapshot);
+        return new RepoAggregate(stats, snapshot, starActivities);
     }
 }

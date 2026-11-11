@@ -29,9 +29,11 @@ public class TimeWindowCalculator {
             throw new InvalidWindowException("hours must be within [1, %d]"
                     .formatted(properties.maxWindowHours()));
         }
-        Instant to = clock.instant()
-                .minus(Duration.ofHours(properties.lagHours()))
-                .truncatedTo(ChronoUnit.HOURS);
+        Instant to = properties.windowEnd() != null
+                ? properties.windowEnd()
+                : clock.instant()
+                        .minus(Duration.ofHours(properties.lagHours()))
+                        .truncatedTo(ChronoUnit.HOURS);
         return new TimeWindow(to.minus(Duration.ofHours(hours)), to, hours);
     }
 }

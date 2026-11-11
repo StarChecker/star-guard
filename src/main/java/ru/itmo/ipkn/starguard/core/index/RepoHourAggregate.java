@@ -1,8 +1,10 @@
 package ru.itmo.ipkn.starguard.core.index;
 
+import ru.itmo.ipkn.starguard.core.domain.ActorActivity;
 import ru.itmo.ipkn.starguard.core.domain.EventCounts;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -14,7 +16,8 @@ public record RepoHourAggregate(
         EventCounts counts,
         int[] starsByMinute,
         int uniqueActors,
-        int starActors
+        int starActors,
+        List<ActorActivity> actors
 ) {
 
     public RepoHourAggregate {
@@ -24,6 +27,12 @@ public record RepoHourAggregate(
             throw new IllegalArgumentException("starsByMinute must have exactly 60 entries");
         }
         starsByMinute = starsByMinute.clone();
+        actors = actors == null ? List.of() : List.copyOf(actors);
+    }
+
+    public RepoHourAggregate(
+            Instant hour, EventCounts counts, int[] starsByMinute, int uniqueActors, int starActors) {
+        this(hour, counts, starsByMinute, uniqueActors, starActors, List.of());
     }
 
     @Override

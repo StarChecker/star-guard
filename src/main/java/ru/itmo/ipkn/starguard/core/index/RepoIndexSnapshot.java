@@ -54,6 +54,20 @@ public record RepoIndexSnapshot(
         return Optional.ofNullable(repos.get(GhArchiveParser.normalizeFullName(fullName)));
     }
 
+    public int rank(String fullName) {
+        IndexedRepo target = repos.get(GhArchiveParser.normalizeFullName(fullName));
+        if (target == null) {
+            return -1;
+        }
+        List<IndexedRepo> ranked = top(repos.size());
+        for (int i = 0; i < ranked.size(); i++) {
+            if (ranked.get(i) == target) {
+                return i + 1;
+            }
+        }
+        return -1;
+    }
+
     /** Топ репозиториев индекса по числу звёзд за окно (для публичного списка). */
     public List<IndexedRepo> top(int limit) {
         return repos.values().stream()

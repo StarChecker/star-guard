@@ -33,7 +33,9 @@ public record TopReposResponse(
             @Schema(description = "Есть на GitHub: true, удалён: false, не проверялось: null") Boolean exists,
             @Schema(description = "Оценка 0–100, если запрошено with_score") Integer score,
             @Schema(description = "Уровень, если запрошено with_score") String level,
-            @Schema(description = "Вердикт, если запрошено with_score") String verdict
+            @Schema(description = "Вердикт, если запрошено with_score") String verdict,
+            @Schema(description = "Закреплён через PUT/POST /api/v1/index/repos: остаётся в топе, "
+                    + "пока у него есть события в окне") boolean pinned
     ) {
     }
 }

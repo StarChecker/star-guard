@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -99,6 +100,14 @@ public record RepoIndexSnapshot(
             return Optional.empty();
         }
         return Optional.of(new IndexHit(new IndexedRepo(refOf(displayName, repo), hours), DataSource.Tier.LONG_TAIL));
+    }
+
+    /** Копия снимка, где репозиторий добавлен в топ (закрепление, F4-2). */
+    public RepoIndexSnapshot withRepo(String normalizedName, IndexedRepo repo) {
+        Map<String, IndexedRepo> withRepo = new HashMap<>(repos);
+        withRepo.put(normalizedName, repo);
+        return new RepoIndexSnapshot(
+                window, builtAt, hoursLoaded, missingHours, parseErrors, withRepo, starIndexByHour, digests);
     }
 
     /** Сколько разных репозиториев с событиями в окне: топ + long-tail. */

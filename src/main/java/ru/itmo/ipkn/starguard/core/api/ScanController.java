@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import ru.itmo.ipkn.starguard.core.api.dto.RepoDto;
 import ru.itmo.ipkn.starguard.core.api.dto.ScanDto;
 import ru.itmo.ipkn.starguard.core.api.dto.ScanRequest;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
@@ -43,27 +42,12 @@ public class ScanController {
         ScanJob.Source source = request.source() == null ? null
                 : ScanJob.Source.valueOf(request.source().toUpperCase(Locale.ROOT));
         ScanJob job = scanService.start(new RepoRef(request.owner(), request.name()), request.hours(), source);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(toDto(job));
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(mapper.toDto(job));
     }
 
     @GetMapping("/{id}")
     @Operation(summary = "Статус скана", description = "Когда status = done, в поле report — полный отчёт.")
     public ScanDto status(@PathVariable String id) {
-        return toDto(scanService.find(id).orElseThrow(() -> new ScanNotFoundException(id)));
-    }
-
-    private ScanDto toDto(ScanJob job) {
-        RepoRef repo = job.repo();
-        return new ScanDto(
-                job.id(),
-                new RepoDto(repo.owner(), repo.name(), repo.fullName()),
-                job.status().name().toLowerCase(Locale.ROOT),
-                job.source().name().toLowerCase(Locale.ROOT),
-                job.hoursDone(),
-                job.stepsTotal(),
-                job.createdAt(),
-                job.report() == null ? null : mapper.toDto(job.report()),
-                job.errorCode(),
-                job.errorMessage());
+        return mapper.toDto(scanService.find(id).orElseThrow(() -> new ScanNotFoundException(id)));
     }
 }

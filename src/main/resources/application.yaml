@@ -58,6 +58,8 @@ app:
     build-on-startup: true    # фоновый прогрев; до готовности API отвечает 503 INDEX_NOT_READY
     refresh-cron: "0 10 * * * *"   # UTC, после задержки публикации GH Archive
     memory-budget-mb: 1024    # F3-6: heap после сборки индекса; JVM в контейнере -Xmx1280m
+    pins:
+      max-pinned: 1000        # F4-2: сколько репозиториев можно закрепить через PUT/POST /api/v1/index/repos
   github:
     enabled: false
     base-url: https://api.github.com

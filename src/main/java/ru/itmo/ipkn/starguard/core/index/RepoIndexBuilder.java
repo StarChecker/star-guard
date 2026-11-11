@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -62,6 +63,7 @@ public class RepoIndexBuilder {
     private final ArchiveProperties archiveProperties;
     private final RepoIndexProperties indexProperties;
     private final StarIndexProperties starIndexProperties;
+    private final PinnedRepos pins;
     private final Clock clock;
 
     /** Дайджесты загруженных часов последнего окна; меняется только внутри {@link #build()}. */
@@ -84,11 +86,27 @@ public class RepoIndexBuilder {
             RepoIndexProperties indexProperties,
             StarIndexProperties starIndexProperties,
             Clock clock) {
+        this(bulkReader, windowCalculator, archiveProperties, indexProperties,
+                starIndexProperties, PinnedRepos.none(), clock);
+    }
+
+    /**
+     * @param pins закреплённые репозитории (F4-2): попадают в топ, пока у них есть события в окне
+     */
+    public RepoIndexBuilder(
+            GhArchiveBulkReader bulkReader,
+            TimeWindowCalculator windowCalculator,
+            ArchiveProperties archiveProperties,
+            RepoIndexProperties indexProperties,
+            StarIndexProperties starIndexProperties,
+            PinnedRepos pins,
+            Clock clock) {
         this.bulkReader = bulkReader;
         this.windowCalculator = windowCalculator;
         this.archiveProperties = archiveProperties;
         this.indexProperties = indexProperties;
         this.starIndexProperties = starIndexProperties;
+        this.pins = pins == null ? PinnedRepos.none() : pins;
         this.clock = clock;
     }
 
@@ -160,9 +178,16 @@ public class RepoIndexBuilder {
         if (hoursLoaded == 0) {
             throw new IndexBuildException("No GH Archive hours loaded for the index window");
         }
+        // Закреплённые (F4-2) остаются в топе, пока у них есть события в окне.
+        Set<String> selected = new LinkedHashSet<>(candidates);
+        for (String key : pins.keys()) {
+            if (!selected.contains(key) && digests.values().stream().anyMatch(d -> d.repos().containsKey(key))) {
+                selected.add(key);
+            }
+        }
 
         Map<String, IndexedRepo> repos = new LinkedHashMap<>();
-        for (String key : candidates) {
+        for (String key : selected) {
             List<RepoHourAggregate> perHour = new ArrayList<>(hours.size());
             for (Instant hour : hours) {
                 perHour.add(digests.get(hour).aggregateOrEmpty(key));

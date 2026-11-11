@@ -17,6 +17,7 @@ import ru.itmo.ipkn.starguard.core.archive.InvalidWindowException;
 import ru.itmo.ipkn.starguard.core.github.GithubUnavailableException;
 import ru.itmo.ipkn.starguard.core.github.RepoGoneException;
 import ru.itmo.ipkn.starguard.core.index.IndexNotReadyException;
+import ru.itmo.ipkn.starguard.core.index.PinLimitExceededException;
 import ru.itmo.ipkn.starguard.core.index.RepoNotIndexedException;
 import ru.itmo.ipkn.starguard.core.scan.ScanNotFoundException;
 import ru.itmo.ipkn.starguard.core.scoring.InvalidMockModeException;
@@ -60,6 +61,12 @@ public class ApiExceptionHandler {
     public ProblemDetail handleIndexNotReady(
             IndexNotReadyException e, HttpServletRequest request) {
         return problem(HttpStatus.SERVICE_UNAVAILABLE, "INDEX_NOT_READY", e.getMessage(), request);
+    }
+
+    @ExceptionHandler(PinLimitExceededException.class)
+    public ProblemDetail handlePinLimit(
+            PinLimitExceededException e, HttpServletRequest request) {
+        return problem(HttpStatus.TOO_MANY_REQUESTS, "PIN_LIMIT_REACHED", e.getMessage(), request);
     }
 
     @ExceptionHandler(ArchiveUnavailableException.class)

@@ -9,7 +9,9 @@ import ru.itmo.ipkn.starguard.core.archive.GhArchiveFeignClient;
 import ru.itmo.ipkn.starguard.core.archive.GhArchiveParser;
 import ru.itmo.ipkn.starguard.core.archive.HttpGhArchiveBulkReader;
 import ru.itmo.ipkn.starguard.core.archive.TimeWindowCalculator;
+import ru.itmo.ipkn.starguard.core.index.IndexAdmission;
 import ru.itmo.ipkn.starguard.core.index.IndexRepoDataProvider;
+import ru.itmo.ipkn.starguard.core.index.PinnedRepos;
 import ru.itmo.ipkn.starguard.core.index.RepoIndex;
 import ru.itmo.ipkn.starguard.core.index.RepoIndexBuilder;
 import ru.itmo.ipkn.starguard.core.index.RepoIndexLifecycle;
@@ -39,16 +41,27 @@ public class IndexConfig {
     }
 
     @Bean
+    public PinnedRepos pinnedRepos(IndexPinsProperties pinsProperties) {
+        return new PinnedRepos(pinsProperties.maxPinned());
+    }
+
+    @Bean
+    public IndexAdmission indexAdmission(RepoIndex repoIndex, PinnedRepos pinnedRepos) {
+        return new IndexAdmission(repoIndex, pinnedRepos);
+    }
+
+    @Bean
     public RepoIndexBuilder repoIndexBuilder(
             GhArchiveBulkReader bulkReader,
             TimeWindowCalculator windowCalculator,
             ArchiveProperties archiveProperties,
             RepoIndexProperties indexProperties,
             StarIndexProperties starIndexProperties,
+            PinnedRepos pinnedRepos,
             Clock clock) {
         return new RepoIndexBuilder(
                 bulkReader, windowCalculator, archiveProperties, indexProperties,
-                starIndexProperties, clock);
+                starIndexProperties, pinnedRepos, clock);
     }
 
     @Bean

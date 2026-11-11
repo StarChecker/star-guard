@@ -6,15 +6,18 @@ import ru.itmo.ipkn.starguard.core.api.dto.CheckDto;
 import ru.itmo.ipkn.starguard.core.api.dto.HourBucketDto;
 import ru.itmo.ipkn.starguard.core.api.dto.RepoDto;
 import ru.itmo.ipkn.starguard.core.api.dto.RepoReportDto;
+import ru.itmo.ipkn.starguard.core.api.dto.ScanDto;
 import ru.itmo.ipkn.starguard.core.api.dto.ScoreDto;
 import ru.itmo.ipkn.starguard.core.api.dto.SourceDto;
 import ru.itmo.ipkn.starguard.core.api.dto.StarTimelineDto;
 import ru.itmo.ipkn.starguard.core.api.dto.StatsDto;
 import ru.itmo.ipkn.starguard.core.api.dto.WindowDto;
 import ru.itmo.ipkn.starguard.core.domain.EventCounts;
+import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.RepoStats;
 import ru.itmo.ipkn.starguard.core.domain.StarTimeline;
 import ru.itmo.ipkn.starguard.core.scoring.CheckContribution;
+import ru.itmo.ipkn.starguard.core.scan.ScanJob;
 import ru.itmo.ipkn.starguard.core.scoring.RepoScore;
 import ru.itmo.ipkn.starguard.core.service.RepoReport;
 
@@ -23,6 +26,22 @@ import java.util.Locale;
 /** Домен → REST DTO. */
 @Component
 public class RepoReportMapper {
+
+    /** Скан по запросу: используется и {@code /api/v1/scans}, и добавлением в индекс (F4-2). */
+    public ScanDto toDto(ScanJob job) {
+        RepoRef repo = job.repo();
+        return new ScanDto(
+                job.id(),
+                new RepoDto(repo.owner(), repo.name(), repo.fullName()),
+                job.status().name().toLowerCase(Locale.ROOT),
+                job.source().name().toLowerCase(Locale.ROOT),
+                job.hoursDone(),
+                job.stepsTotal(),
+                job.createdAt(),
+                job.report() == null ? null : toDto(job.report()),
+                job.errorCode(),
+                job.errorMessage());
+    }
 
     public RepoReportDto toDto(RepoReport report) {
         RepoStats stats = report.stats();

@@ -141,7 +141,9 @@ curl "http://localhost:8080/api/v1/repos/demo/organic-app?hours=3"
 | `GET` | `/api/v1/scans/{id}` | статус скана (`hours_done` / `hours_total`), по готовности — отчёт |
 | `GET` | `/api/v1/repos/{owner}/{name}/history` | анализ любого репозитория по истории GitHub за 30 дней (нужен `GITHUB_TOKEN`) |
 | `GET` | `/api/v1/preview/{owner}/{name}` | базовая статистика GitHub без оценки (`partial: true`), токен необязателен |
-| `GET` | `/api/v1/index/repos` | репозитории индекса топ-N; удалённые на GitHub скрыты, `with_score`, `max_level` |
+| `GET` | `/api/v1/index/repos` | репозитории индекса топ-N; удалённые на GitHub скрыты, `with_score`, `max_level`; `window_repos` — топ + long-tail |
+| `PUT` | `/api/v1/index/repos/{owner}/{name}` | закрепить репозиторий в топе (идемпотентно): события в окне есть — 200 и отчёт, нет — 202 и скан (`Location`) |
+| `POST` | `/api/v1/index/repos` | то же с телом `{owner, name, hours?}` |
 | `GET` | `/v3/api-docs` | OpenAPI 3 JSON |
 | `GET` | `/v3/api-docs.yaml` | OpenAPI 3 YAML |
 | `GET` | `/swagger-ui.html` | Swagger UI |
@@ -213,7 +215,7 @@ curl "http://localhost:8080/api/v1/repos/demo/organic-app?hours=3"
   (npm, pip) и пишет комментарий с оценкой.
 
 Ошибки — в формате RFC 9457 `ProblemDetail` с полем `code`
-(`INVALID_REQUEST`, `REPO_NOT_FOUND_IN_WINDOW`, `REPO_NOT_INDEXED`, `INDEX_NOT_READY`,
+(`INVALID_REQUEST`, `REPO_NOT_FOUND_IN_WINDOW`, `REPO_NOT_INDEXED`, `INDEX_NOT_READY`, `PIN_LIMIT_REACHED`,
 `SCAN_NOT_FOUND`, `ARCHIVE_UNAVAILABLE`, `INTERNAL_ERROR`).
 
 ## Как это работает

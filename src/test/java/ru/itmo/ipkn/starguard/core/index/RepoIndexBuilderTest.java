@@ -8,6 +8,7 @@ import ru.itmo.ipkn.starguard.core.archive.TimeWindowCalculator;
 import ru.itmo.ipkn.starguard.core.archive.TransientArchiveException;
 import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
 import ru.itmo.ipkn.starguard.core.config.RepoIndexProperties;
+import ru.itmo.ipkn.starguard.core.config.StarIndexProperties;
 import ru.itmo.ipkn.starguard.core.domain.ActorActivity;
 import ru.itmo.ipkn.starguard.core.domain.DataSource;
 import ru.itmo.ipkn.starguard.core.domain.EventType;
@@ -131,6 +132,30 @@ class RepoIndexBuilderTest {
         assertThatThrownBy(() -> builder(reader).build())
                 .isInstanceOf(IndexBuildException.class)
                 .hasMessageContaining("No WatchEvent");
+    }
+
+    @Test
+    void pinnedRepositoriesStayInTopWhileTheyHaveEvents() {
+        FakeBulkReader reader = new FakeBulkReader();
+        reader.add(H07, event("1", EventType.WATCH, "a/one", 1, H07, 10));
+        reader.add(H07, event("2", EventType.WATCH, "a/one", 2, H07, 20));
+        reader.add(H08, event("3", EventType.WATCH, "b/three", 3, H08, 10));
+        reader.add(H09, event("4", EventType.WATCH, "c/four", 4, H09, 10));
+        reader.add(H09, event("5", EventType.PUSH, "z/pinned", 5, H09, 20));
+        PinnedRepos pins = new PinnedRepos(10);
+        pins.pin(new RepoRef("Z", "Pinned"));
+        pins.pin(new RepoRef("cold", "repo"));
+        RepoIndexBuilder builder = new RepoIndexBuilder(reader, new TimeWindowCalculator(CLOCK, ARCHIVE),
+                ARCHIVE, INDEX, StarIndexProperties.defaults(), pins, CLOCK);
+
+        RepoIndexSnapshot snapshot = builder.build();
+
+        // топ-2 по звёздам + закреплённый z/pinned (звёзд нет, но push в окне есть);
+        // закреплённый cold/repo событий в окне не имеет — в топ не попадает
+        assertThat(snapshot.repos()).containsOnlyKeys("a/one", "b/three", "z/pinned");
+        assertThat(snapshot.find("z/pinned").orElseThrow().hours())
+                .extracting(hour -> hour.counts().pushes())
+                .containsExactly(0, 0, 1);
     }
 
     @Test

@@ -20,6 +20,7 @@ import ru.itmo.ipkn.starguard.core.api.dto.WindowDto;
 import ru.itmo.ipkn.starguard.core.github.RepoExistenceService;
 import ru.itmo.ipkn.starguard.core.index.IndexNotReadyException;
 import ru.itmo.ipkn.starguard.core.index.IndexedRepo;
+import ru.itmo.ipkn.starguard.core.index.PinnedRepos;
 import ru.itmo.ipkn.starguard.core.index.RepoIndex;
 import ru.itmo.ipkn.starguard.core.index.RepoIndexSnapshot;
 import ru.itmo.ipkn.starguard.core.scoring.RepoScore;
@@ -44,14 +45,17 @@ public class IndexController {
     private final ObjectProvider<RepoIndex> repoIndexProvider;
     private final ObjectProvider<RepoExistenceService> existenceProvider;
     private final ObjectProvider<RepoReportService> reportProvider;
+    private final ObjectProvider<PinnedRepos> pinsProvider;
 
     public IndexController(
             ObjectProvider<RepoIndex> repoIndexProvider,
             ObjectProvider<RepoExistenceService> existenceProvider,
-            ObjectProvider<RepoReportService> reportProvider) {
+            ObjectProvider<RepoReportService> reportProvider,
+            ObjectProvider<PinnedRepos> pinsProvider) {
         this.repoIndexProvider = repoIndexProvider;
         this.existenceProvider = existenceProvider;
         this.reportProvider = reportProvider;
+        this.pinsProvider = pinsProvider;
     }
 
     @GetMapping("/repos")
@@ -94,6 +98,7 @@ public class IndexController {
                         "Repository index is still warming up; retry later"));
 
         RepoExistenceService existence = existenceProvider.getIfAvailable();
+        PinnedRepos pins = pinsProvider.getIfAvailable();
         boolean checkExistence = existingOnly && existence != null && existence.enabled();
         RepoReportService reports = reportProvider.getIfAvailable();
         ScoreLevel levelCap = maxLevel == null ? null : ScoreLevel.valueOf(maxLevel.toUpperCase(Locale.ROOT));
@@ -145,7 +150,8 @@ public class IndexController {
                         present,
                         value,
                         level,
-                        verdict));
+                        verdict,
+                        pins != null && pins.isPinned(indexed.repo().fullName())));
             }
         }
         return new TopReposResponse(

@@ -61,7 +61,7 @@ public class FreshAccountsCheck implements RepoCheck {
             }
         }
 
-        int sample = actors.size();
+        int sample = actors.isEmpty() ? snapshot.starActors() : actors.size();
         int fresh = freshHashes.size();
         double freshShare = (double) fresh / Math.max(sample, 1);
         double s2 = Math.clamp((freshShare - properties.shareFloor()) / properties.shareSpan(), 0.0, 1.0);

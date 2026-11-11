@@ -6,6 +6,7 @@ import ru.itmo.ipkn.starguard.core.archive.HourReadResult;
 import ru.itmo.ipkn.starguard.core.archive.TimeWindowCalculator;
 import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
 import ru.itmo.ipkn.starguard.core.config.RepoIndexProperties;
+import ru.itmo.ipkn.starguard.core.domain.ActorActivity;
 import ru.itmo.ipkn.starguard.core.domain.EventType;
 import ru.itmo.ipkn.starguard.core.domain.GhEvent;
 
@@ -34,7 +35,7 @@ class RepoIndexBuilderTest {
 
     private static final ArchiveProperties ARCHIVE = new ArchiveProperties(
             "https://example.test", ArchiveProperties.Mode.HTTP,
-            6, 24, 2, 4, 0, false, Duration.ofHours(1), null);
+            6, 24, 2, 4, 0, false, Duration.ofHours(1), null, null);
     private static final RepoIndexProperties INDEX = new RepoIndexProperties(
             true, 2, 3, false, "0 10 * * * *");
 
@@ -67,6 +68,14 @@ class RepoIndexBuilderTest {
         assertThat(top.hours().get(2).counts().pushes()).isEqualTo(1);
         assertThat(top.hours().stream().mapToInt(hour -> hour.counts().total()).sum())
                 .isEqualTo(6);
+        assertThat(top.hours().get(0).actors()).extracting(ActorActivity::login)
+                .containsExactlyInAnyOrder("dev1", "dev2");
+        ActorActivity pusher = top.hours().get(2).actors().stream()
+                .filter(actor -> actor.actorId() == 6)
+                .findFirst()
+                .orElseThrow();
+        assertThat(pusher.starred()).isFalse();
+        assertThat(pusher.lastActivityAt()).isEqualTo(H09.plus(Duration.ofMinutes(30)));
 
         // индекс звёзд для C4 покрывает все репозитории, а не только топ-N
         var stars = snapshot.starIndex(snapshot.window());

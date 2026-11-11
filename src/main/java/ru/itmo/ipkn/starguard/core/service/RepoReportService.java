@@ -13,6 +13,7 @@ import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.StarMark;
 import ru.itmo.ipkn.starguard.core.domain.StarTimeline;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
+import ru.itmo.ipkn.starguard.core.github.AccountAgeEnricher;
 import ru.itmo.ipkn.starguard.core.scoring.MockMode;
 import ru.itmo.ipkn.starguard.core.scoring.MockModeContext;
 import ru.itmo.ipkn.starguard.core.scoring.RepoScore;
@@ -37,6 +38,7 @@ public class RepoReportService {
     private final MockModeContext mockModeContext;
     private final ObjectProvider<RepoDataProvider> indexedDataProvider;
     private final StarTimelineService timelineService;
+    private final AccountAgeEnricher accountAgeEnricher;
 
     public RepoReportService(
             GhArchiveClient archiveClient,
@@ -46,7 +48,8 @@ public class RepoReportService {
             ScoringProperties scoringProperties,
             MockModeContext mockModeContext,
             ObjectProvider<RepoDataProvider> indexedDataProvider,
-            StarTimelineService timelineService) {
+            StarTimelineService timelineService,
+            AccountAgeEnricher accountAgeEnricher) {
         this.archiveClient = archiveClient;
         this.windowCalculator = windowCalculator;
         this.aggregator = aggregator;
@@ -55,6 +58,7 @@ public class RepoReportService {
         this.mockModeContext = mockModeContext;
         this.indexedDataProvider = indexedDataProvider;
         this.timelineService = timelineService;
+        this.accountAgeEnricher = accountAgeEnricher;
     }
 
     public RepoReport getReport(RepoRef repo, Integer requestedHours, MockMode requestedMockMode) {
@@ -99,12 +103,12 @@ public class RepoReportService {
         MockMode mockMode = requestedMockMode == null
                 ? scoringProperties.mockMode()
                 : requestedMockMode;
+        RepoAggregate aggregate = accountAgeEnricher.enrich(data.aggregate(), data.starRank());
         RepoScore score = mockModeContext.callWith(
                 mockMode,
-                () -> scoringEngine.score(data.aggregate().snapshot()));
-        StarTimeline timeline = timelineService.build(
-                data.aggregate().snapshot(), score, data.stars());
+                () -> scoringEngine.score(aggregate.snapshot()));
+        StarTimeline timeline = timelineService.build(aggregate.snapshot(), score, data.stars());
         return new RepoReport(
-                repo, data.window(), data.aggregate().stats(), score, data.archive(), timeline);
+                repo, data.window(), aggregate.stats(), score, data.archive(), timeline);
     }
 }

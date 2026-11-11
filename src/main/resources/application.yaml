@@ -2,6 +2,8 @@ server:
   port: 8080
 
 spring:
+  config:
+    import: classpath:scoring.yaml
   application:
     name: star-guard-core
   jackson:
@@ -14,6 +16,9 @@ spring:
             connect-timeout: 5000
             read-timeout: 30000
             logger-level: basic
+          githubApi:
+            connect-timeout: 3000
+            read-timeout: 5000
 
 management:
   endpoints:
@@ -49,12 +54,21 @@ app:
     window-hours: 6           # окно индекса; hours в запросе не может его превышать
     build-on-startup: true    # фоновый прогрев; до готовности API отвечает 503 INDEX_NOT_READY
     refresh-cron: "0 10 * * * *"   # UTC, после задержки публикации GH Archive
+  github:
+    enabled: false
+    base-url: https://api.github.com
+    token: ${GITHUB_TOKEN:}
+    top-n: 100
+    max-lookups-per-request: 50
+    cache-ttl: 24h
+    cache-max-size: 100000
+    rate-limit-pause: 1m
   scoring:
     mode: mock                # mock | real — общий переключатель реализаций C1–C5
     mock-mode: healthy        # профиль моков: healthy | borderline | suspicious (только для mock-проверок)
     min-confidence: 0.5
     weights:
-      burst: 0.30
+      burst: ${app.scoring.checks.burst.weight}
       fresh_accounts: 0.22
       engagement: 0.18
       actor_overlap: 0.22

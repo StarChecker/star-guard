@@ -1,6 +1,8 @@
 package ru.itmo.ipkn.starguard.core.archive;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 
@@ -17,7 +19,7 @@ class TimeWindowCalculatorTest {
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-11-10T12:37:00Z"), ZoneOffset.UTC);
     private static final ArchiveProperties PROPERTIES = new ArchiveProperties(
             "https://example.test", ArchiveProperties.Mode.HTTP,
-            6, 24, 2, 4, 1, false, Duration.ofHours(1), null);
+            6, 24, 2, 4, 1, false, Duration.ofHours(1), null, null);
 
     private final TimeWindowCalculator calculator = new TimeWindowCalculator(CLOCK, PROPERTIES);
 
@@ -38,8 +40,37 @@ class TimeWindowCalculatorTest {
     }
 
     @Test
+    void fixedWindowEndOverridesClockAndLag() {
+        ArchiveProperties fixed = new ArchiveProperties(
+                "https://example.test", ArchiveProperties.Mode.HTTP,
+                6, 24, 2, 4, 1, false, Duration.ofHours(1), null, Instant.parse("2024-11-10T15:42:00Z"));
+
+        TimeWindow window = new TimeWindowCalculator(CLOCK, fixed).window(6);
+
+        assertThat(window.to()).isEqualTo(Instant.parse("2024-11-10T15:00:00Z"));
+        assertThat(window.from()).isEqualTo(Instant.parse("2024-11-10T09:00:00Z"));
+    }
+
+    @Test
+    void bindsWindowEndFromProperty() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(PropertiesConfig.class)
+                .withPropertyValues(
+                        "app.archive.default-window-hours=6",
+                        "app.archive.max-window-hours=24",
+                        "app.archive.parallelism=1",
+                        "app.archive.window-end=2024-11-10T15:30:00Z")
+                .run(context -> assertThat(context.getBean(ArchiveProperties.class).windowEnd())
+                        .isEqualTo(Instant.parse("2024-11-10T15:00:00Z")));
+    }
+
+    @Test
     void rejectsHoursOutsideConfiguredRange() {
         assertThatThrownBy(() -> calculator.window(0)).isInstanceOf(InvalidWindowException.class);
         assertThatThrownBy(() -> calculator.window(25)).isInstanceOf(InvalidWindowException.class);
+    }
+
+    @EnableConfigurationProperties(ArchiveProperties.class)
+    static class PropertiesConfig {
     }
 }

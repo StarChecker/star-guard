@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Сборка итогового score</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:  #f3f7fb;
+      --color-ink:    #1b2a3a;
+      --color-muted:  #46627f;
+      --color-accent: #1859b0;
+      --font-sans:    'Geist', system-ui, sans-serif;
+      --font-serif:   'Noto Serif', 'Instrument Serif', serif;
+      --font-mono:    'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1104px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 0.5rem;
+    }
+    .note { color: var(--color-muted); font-size: 0.85rem; max-width: 72ch; margin-bottom: 1.5rem; line-height: 1.5; }
+    svg { width: 100%; min-width: 1064px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Flowchart · Star Guard</p>
+    <h1>Сборка итогового score</h1>
+    <p class="note">Все веса и пороги лежат в application.yaml. multi_trigger: две проверки со score от 0.7 поднимают score минимум до 60. strong_check: C1, C2 или C4 со score от 0.85 и confidence от 0.7 поднимают его до 70.</p>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1064 500" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="star-guard-scoring-title star-guard-scoring-desc">
+        <title id="star-guard-scoring-title">Сборка итогового score</title>
+        <desc id="star-guard-scoring-desc">Пять проверок C1-C5 дают score и confidence; проверки с confidence ниже 0.5 исключаются, остальные усредняются с ренормировкой весов, правила multi_trigger и strong_check поднимают нижнюю границу, а итог переводится в уровень low, medium, high или critical.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#46627f"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1859b0"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#16707f"/></marker>
+          
+        </defs>
+        <rect width="100%" height="100%" fill="#f3f7fb"/>
+<path d="M 240,88 H 288 Q 296,88 296,96 V 188 Q 296,196 304,196 H 320" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 240,160 H 272 Q 280,160 280,168 V 206 Q 280,214 288,214 H 320" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 240,232 H 320" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 240,304 H 272 Q 280,304 280,296 V 258 Q 280,250 288,250 H 320" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 240,376 H 288 Q 296,376 296,368 V 276 Q 296,268 304,268 H 320" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 512,232 H 576" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 768,232 H 832" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 928,268 V 340" fill="none" stroke="#1859b0" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+<rect x="518.0" y="212" width="52" height="12" rx="2" fill="#f3f7fb"/>
+<text x="544.0" y="221" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">АКТИВНЫЕ</text>
+<rect x="782.0" y="212" width="36" height="12" rx="2" fill="#f3f7fb"/>
+<text x="800.0" y="221" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">SCORE</text>
+<rect x="936.0" y="298" width="36" height="12" rx="2" fill="#f3f7fb"/>
+<text x="954.0" y="307" fill="#1859b0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">FLOOR</text>
+<rect x="40" y="64" width="200" height="48" rx="6" fill="#f3f7fb"/>
+<rect x="40" y="64" width="200" height="48" rx="6" fill="rgba(27,42,58,0.02)" stroke="rgba(27,42,58,0.20)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="140.0" y="85.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">C1 Всплеск звёзд</text>
+<text x="140.0" y="100.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">0.30 · мок, PR #8</text>
+<rect x="40" y="136" width="200" height="48" rx="6" fill="#f3f7fb"/>
+<rect x="40" y="136" width="200" height="48" rx="6" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="140.0" y="157.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">C2 Свежие аккаунты</text>
+<text x="140.0" y="172.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">0.22 · real</text>
+<rect x="40" y="208" width="200" height="48" rx="6" fill="#f3f7fb"/>
+<rect x="40" y="208" width="200" height="48" rx="6" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="140.0" y="229.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">C3 Активность</text>
+<text x="140.0" y="244.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">0.18 · real</text>
+<rect x="40" y="280" width="200" height="48" rx="6" fill="#f3f7fb"/>
+<rect x="40" y="280" width="200" height="48" rx="6" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="140.0" y="301.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">C4 Пересечение</text>
+<text x="140.0" y="316.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">0.22 · real</text>
+<rect x="40" y="352" width="200" height="48" rx="6" fill="#f3f7fb"/>
+<rect x="40" y="352" width="200" height="48" rx="6" fill="rgba(27,42,58,0.02)" stroke="rgba(27,42,58,0.20)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="140.0" y="373.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">C5 Суточный профиль</text>
+<text x="140.0" y="388.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">0.08 · мок</text>
+<rect x="320" y="176" width="192" height="112" rx="6" fill="#f3f7fb"/>
+<rect x="320" y="176" width="192" height="112" rx="6" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="416.0" y="222.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Порог confidence</text>
+<text x="416.0" y="237.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">confidence &gt;= 0.5</text>
+<text x="416.0" y="250.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">иначе только explain</text>
+<rect x="576" y="204" width="192" height="56" rx="6" fill="#f3f7fb"/>
+<rect x="576" y="204" width="192" height="56" rx="6" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="672.0" y="229.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Взвешенное среднее</text>
+<text x="672.0" y="244.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">ренормировка весов</text>
+<rect x="832" y="196" width="192" height="72" rx="6" fill="#f3f7fb"/>
+<rect x="832" y="196" width="192" height="72" rx="6" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="928.0" y="222.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Правила усиления</text>
+<text x="928.0" y="237.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">multi_trigger: 60</text>
+<text x="928.0" y="250.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">strong_check: 70</text>
+<rect x="832" y="340" width="192" height="64" rx="20" fill="#f3f7fb"/>
+<rect x="832" y="340" width="192" height="64" rx="20" fill="rgba(24,89,176,0.08)" stroke="#1859b0" stroke-width="1"/>
+<text x="928.0" y="370.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Score 0-100 и уровень</text>
+<text x="928.0" y="385.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">medium 30 · high 60 · crit 85</text>
+<line x1="40" y1="436" x2="1024" y2="436" stroke="rgba(27,42,58,0.10)" stroke-width="0.8"/>
+<text x="40" y="452" fill="#46627f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.18em">ЛЕГЕНДА</text>
+<rect x="40" y="468" width="14" height="10" rx="2" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="60" y="476" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Реальная проверка / шаг</text>
+<rect x="205.3" y="468" width="14" height="10" rx="2" fill="rgba(27,42,58,0.02)" stroke="rgba(27,42,58,0.20)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="225.3" y="476" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Мок</text>
+<rect x="268.6" y="468" width="14" height="10" rx="2" fill="rgba(24,89,176,0.08)" stroke="#1859b0" stroke-width="1"/>
+<text x="288.6" y="476" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Итог</text>
+<line x1="337.0" y1="473" x2="365.0" y2="473" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<text x="373.0" y="476" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Результат проверки</text>
+<line x1="492.8" y1="473" x2="520.8" y2="473" stroke="#1859b0" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+<text x="528.8" y="476" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Нижняя граница score</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

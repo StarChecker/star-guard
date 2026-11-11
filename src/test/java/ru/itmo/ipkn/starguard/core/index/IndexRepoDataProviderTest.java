@@ -28,7 +28,7 @@ class IndexRepoDataProviderTest {
     private static final RepoRef REPO = new RepoRef("demo", "star-guard");
     private static final ArchiveProperties ARCHIVE = new ArchiveProperties(
             "https://example.test", ArchiveProperties.Mode.HTTP,
-            6, 24, 2, 4, 0, false, Duration.ofHours(1), null);
+            6, 24, 2, 4, 0, false, Duration.ofHours(1), null, null);
 
     @Test
     void composesRequestedSubWindow() {
@@ -45,6 +45,7 @@ class IndexRepoDataProviderTest {
         assertThat(data.archive().hoursRequested()).isEqualTo(2);
         assertThat(data.archive().hoursLoaded()).isEqualTo(2);
         assertThat(data.archive().cached()).isTrue();
+        assertThat(data.starRank()).isEqualTo(1);
     }
 
     @Test

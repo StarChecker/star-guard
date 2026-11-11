@@ -54,8 +54,9 @@ public class IndexConfig {
     public RepoIndexLifecycle repoIndexLifecycle(
             RepoIndexBuilder builder,
             RepoIndex repoIndex,
-            RepoIndexProperties properties) {
-        return new RepoIndexLifecycle(builder, repoIndex, properties);
+            RepoIndexProperties properties,
+            ArchiveProperties archiveProperties) {
+        return new RepoIndexLifecycle(builder, repoIndex, properties, archiveProperties);
     }
 
     @Bean

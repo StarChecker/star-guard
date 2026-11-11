@@ -61,7 +61,8 @@ public class IndexRepoDataProvider implements RepoDataProvider {
                 missing,
                 snapshot.parseErrors(),
                 true);
-        return new RepoData(window, aggregate, archive, starMarks(snapshot, repo, window));
+        return new RepoData(window, aggregate, archive, snapshot.rank(repo.fullName()),
+                starMarks(snapshot, repo, window));
     }
 
     /** Звёзды подокна с точностью до часа: индекс хранит акторов по часам. */

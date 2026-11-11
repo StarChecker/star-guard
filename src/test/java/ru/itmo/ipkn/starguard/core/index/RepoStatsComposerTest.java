@@ -1,6 +1,8 @@
 package ru.itmo.ipkn.starguard.core.index;
 
 import org.junit.jupiter.api.Test;
+import ru.itmo.ipkn.starguard.core.domain.ActorActivity;
+import ru.itmo.ipkn.starguard.core.domain.ActorProfile;
 import ru.itmo.ipkn.starguard.core.domain.EventCounts;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
@@ -48,6 +50,39 @@ class RepoStatsComposerTest {
         assertThat(aggregate.snapshot().starsByMinute()[59]).isEqualTo(5);
         assertThat(aggregate.snapshot().starsByMinute()[60]).isEqualTo(5);
         assertThat(aggregate.snapshot().window()).isEqualTo(WINDOW_2H);
+    }
+
+    @Test
+    void buildsStarActorProfilesFromHourlyActivityOfSubWindow() {
+        Instant createdAt = Instant.parse("2026-11-01T00:00:00Z");
+        RepoHourAggregate hour07 = withActors(H07,
+                new ActorActivity(9, "early", H07, null, null, true));
+        RepoHourAggregate hour08 = withActors(H08,
+                new ActorActivity(1, "alice", H08.plusSeconds(600), H08.plusSeconds(60), null, false),
+                new ActorActivity(2, "bob", H08.plusSeconds(120), null, createdAt, true));
+        RepoHourAggregate hour09 = withActors(H09,
+                new ActorActivity(1, "alice", H09.plusSeconds(60), null, null, true),
+                new ActorActivity(3, "carol", H09.plusSeconds(300), H09.plusSeconds(300), null, false));
+
+        RepoAggregate aggregate = RepoStatsComposer.compose(
+                REPO, WINDOW_2H, List.of(hour07, hour08, hour09), CLOCK);
+
+        assertThat(aggregate.starActors()).extracting(ActorActivity::login)
+                .containsExactly("alice", "bob");
+        ActorActivity alice = aggregate.starActors().getFirst();
+        assertThat(alice.firstSeen()).isEqualTo(H08.plusSeconds(600));
+        assertThat(alice.lastActivityAt()).isEqualTo(H08.plusSeconds(60));
+        assertThat(aggregate.snapshot().starActorProfiles())
+                .extracting(ActorProfile::actorHash)
+                .containsExactlyInAnyOrder(ActorProfile.hashOf(1), ActorProfile.hashOf(2));
+        assertThat(aggregate.snapshot().starActorProfiles())
+                .filteredOn(profile -> profile.actorHash().equals(ActorProfile.hashOf(2)))
+                .extracting(ActorProfile::accountCreatedAt)
+                .containsExactly(createdAt);
+    }
+
+    private static RepoHourAggregate withActors(Instant hour, ActorActivity... actors) {
+        return new RepoHourAggregate(hour, EventCounts.empty(), new int[60], 0, 0, List.of(actors));
     }
 
     private static RepoHourAggregate aggregate(

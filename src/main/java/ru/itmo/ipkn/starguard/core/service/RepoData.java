@@ -9,13 +9,18 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Данные репозитория для отчёта: окно, агрегаты, метаданные источника
- * и звёзды с акторами (для таймлайна с разметкой подозрительных).
+ * Данные репозитория для отчёта: окно, агрегаты, метаданные источника,
+ * место в индексе (для дозапроса возраста аккаунтов в C2) и звёзды с акторами
+ * (для таймлайна с разметкой подозрительных).
+ *
+ * @param starRank место в топ-N индекса; null вне индекса
+ * @param stars    звёзды окна: кто и когда; пустой список, если не собирались
  */
 public record RepoData(
         TimeWindow window,
         RepoAggregate aggregate,
         ArchiveFetchResult archive,
+        Integer starRank,
         List<StarMark> stars
 ) {
 
@@ -27,6 +32,14 @@ public record RepoData(
     }
 
     public RepoData(TimeWindow window, RepoAggregate aggregate, ArchiveFetchResult archive) {
-        this(window, aggregate, archive, List.of());
+        this(window, aggregate, archive, null, List.of());
+    }
+
+    public RepoData(TimeWindow window, RepoAggregate aggregate, ArchiveFetchResult archive, Integer starRank) {
+        this(window, aggregate, archive, starRank, List.of());
+    }
+
+    public RepoData(TimeWindow window, RepoAggregate aggregate, ArchiveFetchResult archive, List<StarMark> stars) {
+        this(window, aggregate, archive, null, stars);
     }
 }

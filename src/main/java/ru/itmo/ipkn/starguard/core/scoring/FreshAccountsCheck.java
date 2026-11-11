@@ -10,8 +10,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 @ConditionalOnProperty(name = FreshAccountsProperties.MODE_PROPERTY, havingValue = "real")
@@ -41,12 +43,9 @@ public class FreshAccountsCheck implements RepoCheck {
         int emptyAccounts = 0;
         List<String> freshHashes = new ArrayList<>();
         for (ActorProfile actor : actors) {
-            Instant bornAt = actor.accountCreatedAt() != null
-                    ? actor.accountCreatedAt()
-                    : history ? actor.firstSeen() : null;
-            boolean isNew = bornAt != null && bornAt.isAfter(newAccountSince);
-            boolean isEmpty = history
-                    && (actor.lastActivityAt() == null || actor.lastActivityAt().isBefore(emptySince));
+            Instant bornAt = bornAt(actor, history);
+            boolean isNew = isNew(bornAt, newAccountSince);
+            boolean isEmpty = isEmpty(actor, history, emptySince);
 
             if (bornAt != null || history) {
                 withData++;
@@ -100,6 +99,40 @@ public class FreshAccountsCheck implements RepoCheck {
             details.put("reason", "partial_actor_data");
         }
         return new CheckResult(id(), score, confidence, details);
+    }
+
+    /**
+     * Хэши акторов, которых C2 считает свежими или пустыми (для разметки таймлайна звёзд).
+     * Сопоставляются с актором через {@link ActorProfile#hashOf(long)}.
+     */
+    public Set<String> freshActorHashes(RepoSnapshot snapshot) {
+        boolean history = snapshot.data().actorHistory();
+        Instant reference = snapshot.window().to();
+        Instant newAccountSince = reference.minus(Duration.ofDays(properties.newAccountDays()));
+        Instant emptySince = reference.minus(Duration.ofDays(properties.emptyActorDays()));
+        Set<String> fresh = new HashSet<>();
+        for (ActorProfile actor : snapshot.starActorProfiles()) {
+            if (isNew(bornAt(actor, history), newAccountSince) || isEmpty(actor, history, emptySince)) {
+                fresh.add(actor.actorHash());
+            }
+        }
+        return fresh;
+    }
+
+    private static Instant bornAt(ActorProfile actor, boolean history) {
+        if (actor.accountCreatedAt() != null) {
+            return actor.accountCreatedAt();
+        }
+        return history ? actor.firstSeen() : null;
+    }
+
+    private static boolean isNew(Instant bornAt, Instant newAccountSince) {
+        return bornAt != null && bornAt.isAfter(newAccountSince);
+    }
+
+    private static boolean isEmpty(ActorProfile actor, boolean history, Instant emptySince) {
+        return history
+                && (actor.lastActivityAt() == null || actor.lastActivityAt().isBefore(emptySince));
     }
 
     private static double round3(double value) {

@@ -8,6 +8,8 @@ public record RepoReportDto(
         WindowDto window,
         StatsDto stats,
         ScoreDto score,
-        ArchiveDto archive
+        ArchiveDto archive,
+        @Schema(description = "Звёзды по времени с разметкой подозрительных — для графика")
+        StarTimelineDto starsTimeline
 ) {
 }

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Star Guard — предпросмотр интерфейса</title>
+  <style>
+    body { margin: 0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", sans-serif; }
+    header.page { padding: 24px 32px 8px; }
+    header.page h1 { margin: 0; font-size: 22px; }
+    header.page p { margin: 4px 0 0; color: #59636e; max-width: 760px; }
+    .cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .col { padding: 16px 32px 40px; color: var(--fgColor-default); background: var(--bgColor-default); }
+    .col h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--fgColor-muted); margin: 24px 0 8px; }
+    .grid { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }
+    .slot { width: 296px; }
+    .slot.box { border-top: 1px solid var(--borderColor-default); }
+    .repo-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .gh-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 6px;
+              border: 1px solid var(--borderColor-default); background: var(--bgColor-muted); font-size: 12px; font-weight: 500; }
+    .list-row { padding: 12px 0; border-top: 1px solid var(--borderColor-muted); font-size: 12px; color: var(--fgColor-muted); }
+    .list-row a { color: var(--fgColor-accent); font-size: 16px; font-weight: 600; text-decoration: none; }
+    .list-row .stars { color: var(--fgColor-muted); margin-right: 16px; }
+    @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header class="page">
+    <h1>Star Guard — предпросмотр интерфейса расширения</h1>
+    <p>Все состояния карточки, значка у кнопки Star и точек в списках на примерах данных, в светлой и тёмной теме GitHub.
+       Данные сгенерированы для демонстрации, это не реальная оценка этих репозиториев.</p>
+  </header>
+  <div class="cols">
+    <section class="col" data-theme="light"></section>
+    <section class="col" data-theme="dark"></section>
+  </div>
+  <script src="../src/ui.js"></script>
+  <script src="../src/theme.js"></script>
+  <script src="samples.js"></script>
+  <script src="preview.js"></script>
+</body>
+</html>

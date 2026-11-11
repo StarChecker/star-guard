@@ -134,7 +134,12 @@ curl "http://localhost:8080/api/v1/repos/demo/organic-app?hours=3"
 
 | Метод | Путь | Описание |
 |-------|------|----------|
-| `GET` | `/api/v1/repos/{owner}/{name}` | статистика + suspicious score |
+| `GET` | `/api/v1/repos/{owner}/{name}` | статистика + suspicious score + таймлайн звёзд |
+| `POST` | `/api/v1/repos/batch` | сводки до 50 репозиториев (списки GitHub в расширении); только индекс |
+| `GET` | `/api/v1/badge/{owner}/{name}` | JSON для бейджа shields.io |
+| `POST` | `/api/v1/scans` | фоновый скан GH Archive для репозитория вне индекса → `id` |
+| `GET` | `/api/v1/scans/{id}` | статус скана (`hours_done` / `hours_total`), по готовности — отчёт |
+| `GET` | `/api/v1/index/repos` | репозитории индекса топ-N |
 | `GET` | `/v3/api-docs` | OpenAPI 3 JSON |
 | `GET` | `/v3/api-docs.yaml` | OpenAPI 3 YAML |
 | `GET` | `/swagger-ui.html` | Swagger UI |
@@ -178,9 +183,35 @@ curl "http://localhost:8080/api/v1/repos/demo/organic-app?hours=3"
 }
 ```
 
+Для интерфейса в отчёте есть:
+
+- `score.verdict` и `score.checks[].title` / `summary` — вердикт и причины по-русски,
+  нейтральным тоном («признаки накрутки», а не «накручено»);
+- `stars_timeline` — звёзды по 10/20/30 минут (`points[].stars`, `points[].suspicious`).
+  Подозрительной звезду помечает реальная проверка с ненулевым score: C4 — аккаунты
+  фермы, C2 — свежие и пустые аккаунты. В режиме индекса аккаунты известны по часам,
+  поэтому подозрительные внутри часа распределены пропорционально (`estimated: true`).
+
+### Бейдж для README
+
+```markdown
+![Star Guard](https://img.shields.io/endpoint?url=https://<host>/api/v1/badge/<owner>/<name>)
+```
+
+Сообщение — `no signs of fake stars · 7/100`, `suspicious stars · 72/100` и т. д.;
+для репозитория вне индекса — серое `not tracked`.
+
+### Расширение и Action
+
+- [extension/](extension/README.md) — расширение Chrome: значок у Star, карточка
+  в сайдбаре, график звёзд, точки в списках, скан по кнопке «Проверить»;
+  все состояния — в `extension/preview/index.html`;
+- [action/](action/README.md) — GitHub Action: проверяет новые зависимости PR
+  (npm, pip) и пишет комментарий с оценкой.
+
 Ошибки — в формате RFC 9457 `ProblemDetail` с полем `code`
-(`INVALID_REQUEST`, `REPO_NOT_FOUND_IN_WINDOW`, `ARCHIVE_UNAVAILABLE`,
-`INTERNAL_ERROR`).
+(`INVALID_REQUEST`, `REPO_NOT_FOUND_IN_WINDOW`, `REPO_NOT_INDEXED`, `INDEX_NOT_READY`,
+`SCAN_NOT_FOUND`, `ARCHIVE_UNAVAILABLE`, `INTERNAL_ERROR`).
 
 ## Как это работает
 
@@ -338,13 +369,15 @@ mvn test
 `/v3/api-docs`, индекс топ-1000, реальный C2 (формула, история/без истории, пороги,
 переключатель mock/real, фикстуры `fresh-farm` / `organic` / `no-actor-data`),
 реальный C3 (формула, пороги, фикстуры `star-stuffing` / `healthy-lib`) и реальный C4
-(индекс звёзд, формула, покрытие окна, фикстуры `farm-target` / `organic-app`).
-Все тесты работают офлайн.
+(индекс звёзд, формула, покрытие окна, фикстуры `farm-target` / `organic-app`),
+API под расширение (тексты explain, таймлайн звёзд, batch, бейдж, скан по запросу).
+Все тесты работают офлайн. Тесты Action — `node --test action/test/*.test.js`.
 
 ## CI/CD
 
 - [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — сборка и тесты на JDK 25
-  для push в `main`/`feature/**` и pull request;
+  для push в `main`/`feature/**` и pull request; отдельный job проверяет расширение,
+  гоняет тесты Action и выкладывает `star-guard-extension.zip`;
 - [`.github/workflows/release.yml`](.github/workflows/release.yml) — по тегу `v*`
   собирает jar и публикует GitHub Release.
 

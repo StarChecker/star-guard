@@ -6,6 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
@@ -14,6 +16,7 @@ import ru.itmo.ipkn.starguard.core.archive.ArchiveUnavailableException;
 import ru.itmo.ipkn.starguard.core.archive.InvalidWindowException;
 import ru.itmo.ipkn.starguard.core.index.IndexNotReadyException;
 import ru.itmo.ipkn.starguard.core.index.RepoNotIndexedException;
+import ru.itmo.ipkn.starguard.core.scan.ScanNotFoundException;
 import ru.itmo.ipkn.starguard.core.scoring.InvalidMockModeException;
 import ru.itmo.ipkn.starguard.core.service.RepoNotFoundException;
 
@@ -28,6 +31,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(RepoNotFoundException.class)
     public ProblemDetail handleNotFound(RepoNotFoundException e, HttpServletRequest request) {
         return problem(HttpStatus.NOT_FOUND, "REPO_NOT_FOUND_IN_WINDOW", e.getMessage(), request);
+    }
+
+    @ExceptionHandler(ScanNotFoundException.class)
+    public ProblemDetail handleScanNotFound(ScanNotFoundException e, HttpServletRequest request) {
+        return problem(HttpStatus.NOT_FOUND, "SCAN_NOT_FOUND", e.getMessage(), request);
     }
 
     @ExceptionHandler(RepoNotIndexedException.class)
@@ -54,7 +62,9 @@ public class ApiExceptionHandler {
             InvalidMockModeException.class,
             ConstraintViolationException.class,
             HandlerMethodValidationException.class,
-            MethodArgumentTypeMismatchException.class
+            MethodArgumentTypeMismatchException.class,
+            MethodArgumentNotValidException.class,
+            HttpMessageNotReadableException.class
     })
     public ProblemDetail handleBadRequest(Exception e, HttpServletRequest request) {
         return problem(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage(), request);

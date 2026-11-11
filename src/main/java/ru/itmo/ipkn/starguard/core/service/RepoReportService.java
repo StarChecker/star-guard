@@ -3,11 +3,15 @@ package ru.itmo.ipkn.starguard.core.service;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveFetchResult;
+import ru.itmo.ipkn.starguard.core.archive.ArchiveProgress;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveUnavailableException;
 import ru.itmo.ipkn.starguard.core.archive.GhArchiveClient;
 import ru.itmo.ipkn.starguard.core.archive.TimeWindowCalculator;
 import ru.itmo.ipkn.starguard.core.config.ScoringProperties;
+import ru.itmo.ipkn.starguard.core.domain.EventType;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
+import ru.itmo.ipkn.starguard.core.domain.StarMark;
+import ru.itmo.ipkn.starguard.core.domain.StarTimeline;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 import ru.itmo.ipkn.starguard.core.github.AccountAgeEnricher;
 import ru.itmo.ipkn.starguard.core.scoring.MockMode;
@@ -17,9 +21,11 @@ import ru.itmo.ipkn.starguard.core.scoring.ScoringEngine;
 import ru.itmo.ipkn.starguard.core.stats.RepoAggregate;
 import ru.itmo.ipkn.starguard.core.stats.StatsAggregator;
 
+import java.util.List;
+
 /**
  * Оркестрация PoC: данные из индекса (быстрый путь) или прямо из GH Archive
- * (fixture-режим / индекс отключён) → scoring.
+ * (fixture-режим / индекс отключён / скан по запросу) → scoring → таймлайн звёзд.
  */
 @Service
 public class RepoReportService {
@@ -31,6 +37,7 @@ public class RepoReportService {
     private final ScoringProperties scoringProperties;
     private final MockModeContext mockModeContext;
     private final ObjectProvider<RepoDataProvider> indexedDataProvider;
+    private final StarTimelineService timelineService;
     private final AccountAgeEnricher accountAgeEnricher;
 
     public RepoReportService(
@@ -41,6 +48,7 @@ public class RepoReportService {
             ScoringProperties scoringProperties,
             MockModeContext mockModeContext,
             ObjectProvider<RepoDataProvider> indexedDataProvider,
+            StarTimelineService timelineService,
             AccountAgeEnricher accountAgeEnricher) {
         this.archiveClient = archiveClient;
         this.windowCalculator = windowCalculator;
@@ -49,6 +57,7 @@ public class RepoReportService {
         this.scoringProperties = scoringProperties;
         this.mockModeContext = mockModeContext;
         this.indexedDataProvider = indexedDataProvider;
+        this.timelineService = timelineService;
         this.accountAgeEnricher = accountAgeEnricher;
     }
 
@@ -57,13 +66,21 @@ public class RepoReportService {
         if (indexed != null) {
             return buildReport(repo, indexed.load(repo, requestedHours), requestedMockMode);
         }
-        return getArchiveReport(repo, requestedHours, requestedMockMode);
+        return scanArchive(repo, requestedHours, requestedMockMode, ArchiveProgress.NONE);
     }
 
-    private RepoReport getArchiveReport(
-            RepoRef repo, Integer requestedHours, MockMode requestedMockMode) {
+    /** Есть ли быстрый путь (индекс): тогда пакетные запросы и бейджи не качают дампы. */
+    public boolean hasIndex() {
+        return indexedDataProvider.getIfAvailable() != null;
+    }
+
+    /**
+     * Прямой скан GH Archive в обход индекса — для репозиториев вне топ-N (кнопка «проверить»).
+     */
+    public RepoReport scanArchive(
+            RepoRef repo, Integer requestedHours, MockMode requestedMockMode, ArchiveProgress progress) {
         TimeWindow window = windowCalculator.window(requestedHours);
-        ArchiveFetchResult archive = archiveClient.fetchEvents(repo, window);
+        ArchiveFetchResult archive = archiveClient.fetchEvents(repo, window, progress);
 
         if (archive.events().isEmpty()) {
             if (archive.hoursLoaded() == 0) {
@@ -74,7 +91,11 @@ public class RepoReportService {
         }
 
         RepoAggregate aggregate = aggregator.aggregate(repo, window, archive.events(), archive.starIndex());
-        return buildReport(repo, new RepoData(window, aggregate, archive), requestedMockMode);
+        List<StarMark> stars = archive.events().stream()
+                .filter(event -> event.type() == EventType.WATCH)
+                .map(event -> new StarMark(event.createdAt(), event.actorId(), false))
+                .toList();
+        return buildReport(repo, new RepoData(window, aggregate, archive, stars), requestedMockMode);
     }
 
     private RepoReport buildReport(
@@ -86,7 +107,8 @@ public class RepoReportService {
         RepoScore score = mockModeContext.callWith(
                 mockMode,
                 () -> scoringEngine.score(aggregate.snapshot()));
+        StarTimeline timeline = timelineService.build(aggregate.snapshot(), score, data.stars());
         return new RepoReport(
-                repo, data.window(), aggregate.stats(), score, data.archive());
+                repo, data.window(), aggregate.stats(), score, data.archive(), timeline);
     }
 }

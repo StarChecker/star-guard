@@ -182,7 +182,7 @@ class ActorOverlapCheckTest {
     @Test
     void candidatePoolLimitsComparedRepos() {
         ActorOverlapProperties props = new ActorOverlapProperties(
-                null, 1, null, null, null, null, null, null, null, null, null, null, null);
+                null, 1, null, null, null, null, null, null, null, null, null, null, null, null);
         StarIndex index = new IndexBuilder()
                 .stars(TARGET, 1, 20)
                 .stars("big/overlap", 1, 10)
@@ -216,11 +216,11 @@ class ActorOverlapCheckTest {
     @Test
     void invalidPropertiesFailFast() {
         assertThatThrownBy(() -> new ActorOverlapProperties(
-                null, null, null, null, null, 1, null, null, null, null, null, null, null))
+                null, null, null, null, null, 1, null, null, null, null, null, null, null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("multi-repo-threshold");
         assertThatThrownBy(() -> new ActorOverlapProperties(
-                null, null, null, 0.0, null, null, null, null, null, null, null, null, null))
+                null, null, null, 0.0, null, null, null, null, null, null, null, null, null, null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("jaccard-span");
     }

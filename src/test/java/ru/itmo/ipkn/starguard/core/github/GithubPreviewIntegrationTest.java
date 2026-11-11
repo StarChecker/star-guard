@@ -10,6 +10,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import ru.itmo.ipkn.starguard.core.config.GithubPreviewProperties;
 import ru.itmo.ipkn.starguard.core.config.GithubProperties;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
@@ -28,7 +29,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -192,7 +192,7 @@ class GithubPreviewIntegrationTest {
                         .withHeader("Link", "<https://api.github.com/x?per_page=1&anon=1&page=3>; rel=\"last\"")
                         .withBody("[{}]")));
 
-        mockMvc.perform(get("/api/v1/preview/web/app"))
+        mockMvc.perform(MockMvcRequestBuilders.get("/api/v1/preview/web/app"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.source").value("github"))
                 .andExpect(jsonPath("$.partial").value(true))
@@ -205,11 +205,11 @@ class GithubPreviewIntegrationTest {
 
         WIRE_MOCK.stubFor(get(urlEqualTo("/repos/web/missing"))
                 .willReturn(aResponse().withStatus(404)));
-        mockMvc.perform(get("/api/v1/preview/web/missing"))
+        mockMvc.perform(MockMvcRequestBuilders.get("/api/v1/preview/web/missing"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("REPO_NOT_FOUND_ON_GITHUB"));
 
-        mockMvc.perform(get("/api/v1/preview/bad name/app"))
+        mockMvc.perform(MockMvcRequestBuilders.get("/api/v1/preview/bad name/app"))
                 .andExpect(status().isBadRequest());
     }
 

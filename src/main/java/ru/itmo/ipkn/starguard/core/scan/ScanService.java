@@ -2,6 +2,9 @@ package ru.itmo.ipkn.starguard.core.scan;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.Timer;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +16,7 @@ import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 import ru.itmo.ipkn.starguard.core.github.GithubUnavailableException;
 import ru.itmo.ipkn.starguard.core.github.RepoGoneException;
+import ru.itmo.ipkn.starguard.core.metrics.StarGuardMetrics;
 import ru.itmo.ipkn.starguard.core.service.RepoNotFoundException;
 import ru.itmo.ipkn.starguard.core.service.RepoReportService;
 
@@ -48,12 +52,16 @@ public class ScanService {
             .build();
     private final ConcurrentHashMap<String, String> jobIdByKey = new ConcurrentHashMap<>();
     private final ExecutorService executor;
+    private final AtomicInteger active = new AtomicInteger();
 
     public ScanService(RepoReportService reportService, TimeWindowCalculator windowCalculator, Clock clock) {
         this.reportService = reportService;
         this.windowCalculator = windowCalculator;
         this.clock = clock;
         AtomicInteger threads = new AtomicInteger();
+        Gauge.builder(StarGuardMetrics.SCAN_ACTIVE, active, AtomicInteger::get)
+                .description("Сканов выполняется сейчас")
+                .register(Metrics.globalRegistry);
         this.executor = Executors.newFixedThreadPool(WORKERS, runnable -> {
             Thread thread = new Thread(runnable, "repo-scan-" + threads.incrementAndGet());
             thread.setDaemon(true);
@@ -98,6 +106,8 @@ public class ScanService {
 
     private void run(ScanJob job, Integer requestedHours) {
         job.running();
+        active.incrementAndGet();
+        Timer.Sample sample = Timer.start(Metrics.globalRegistry);
         try {
             ArchiveProgress progress = job::progress;
             job.done(job.source() == ScanJob.Source.GITHUB
@@ -114,6 +124,14 @@ public class ScanService {
         } catch (RuntimeException e) {
             log.error("Scan {} for {} failed", job.id(), job.repo().fullName(), e);
             job.failed("INTERNAL_ERROR", "Unexpected error during scan");
+        } finally {
+            active.decrementAndGet();
+            sample.stop(Timer.builder(StarGuardMetrics.SCAN_LATENCY)
+                    .description("Скан по запросу: от старта до результата")
+                    .tag("source", job.source().name().toLowerCase(Locale.ROOT))
+                    .tag("outcome", job.status() == ScanJob.Status.DONE ? "done"
+                            : job.errorCode() == null ? "failed" : job.errorCode().toLowerCase(Locale.ROOT))
+                    .register(Metrics.globalRegistry));
         }
     }
 

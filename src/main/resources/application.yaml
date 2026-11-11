@@ -24,7 +24,10 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: star-guard
 
 springdoc:
   api-docs:
@@ -54,6 +57,7 @@ app:
     window-hours: 6           # окно индекса; hours в запросе не может его превышать
     build-on-startup: true    # фоновый прогрев; до готовности API отвечает 503 INDEX_NOT_READY
     refresh-cron: "0 10 * * * *"   # UTC, после задержки публикации GH Archive
+    memory-budget-mb: 1024    # F3-6: heap после сборки индекса; JVM в контейнере -Xmx1280m
   github:
     enabled: false
     base-url: https://api.github.com

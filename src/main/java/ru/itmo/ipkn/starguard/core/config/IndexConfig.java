@@ -13,6 +13,7 @@ import ru.itmo.ipkn.starguard.core.index.IndexRepoDataProvider;
 import ru.itmo.ipkn.starguard.core.index.RepoIndex;
 import ru.itmo.ipkn.starguard.core.index.RepoIndexBuilder;
 import ru.itmo.ipkn.starguard.core.index.RepoIndexLifecycle;
+import ru.itmo.ipkn.starguard.core.metrics.IndexMemoryMonitor;
 import ru.itmo.ipkn.starguard.core.service.RepoDataProvider;
 
 import java.time.Clock;
@@ -55,8 +56,14 @@ public class IndexConfig {
             RepoIndexBuilder builder,
             RepoIndex repoIndex,
             RepoIndexProperties properties,
-            ArchiveProperties archiveProperties) {
-        return new RepoIndexLifecycle(builder, repoIndex, properties, archiveProperties);
+            ArchiveProperties archiveProperties,
+            IndexMemoryMonitor memoryMonitor) {
+        return new RepoIndexLifecycle(builder, repoIndex, properties, archiveProperties, memoryMonitor);
+    }
+
+    @Bean
+    public IndexMemoryMonitor indexMemoryMonitor(IndexMemoryProperties memoryProperties) {
+        return new IndexMemoryMonitor(memoryProperties);
     }
 
     @Bean

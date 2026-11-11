@@ -10,4 +10,5 @@ services:
       # токен GitHub: анализ любого репозитория по истории и возраст аккаунтов (C2)
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
       APP_GITHUB_ENABLED: "${APP_GITHUB_ENABLED:-false}"
+    mem_limit: 1600m          # F3-6: heap 1280m (JAVA_TOOL_OPTIONS) + метаспейс и буферы
     restart: unless-stopped

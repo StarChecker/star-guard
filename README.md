@@ -146,6 +146,7 @@ curl "http://localhost:8080/api/v1/repos/demo/organic-app?hours=3"
 | `GET` | `/v3/api-docs.yaml` | OpenAPI 3 YAML |
 | `GET` | `/swagger-ui.html` | Swagger UI |
 | `GET` | `/actuator/health` | health check |
+| `GET` | `/actuator/prometheus` | метрики Prometheus: `starguard_index_*`, `starguard_scan_*`, JVM |
 
 Параметры запроса:
 
@@ -340,6 +341,29 @@ confidence = confidence * coverage                                # 0.9 * дол
 
 Расширение показывает preview в карточке, пока оценки нет: «нет готовой оценки»,
 идёт скан, «нет событий за окно».
+
+### Метрики и память
+
+`/actuator/prometheus` (и `/actuator/metrics`) отдаёт метрики Star Guard:
+
+| Метрика | Что показывает |
+|---|---|
+| `starguard_index_build_duration_seconds{outcome}` | время сборки индекса топ-N |
+| `starguard_index_size`, `starguard_index_hours_loaded` | репозиториев и часов в индексе |
+| `starguard_index_star_pairs` | размер индекса звёзд C4 |
+| `starguard_index_age` | возраст индекса, секунды |
+| `starguard_index_memory_bytes`, `..._budget_bytes`, `..._over_budget` | heap после сборки индекса против бюджета |
+| `starguard_scan_latency_seconds{source,outcome}`, `starguard_scan_active` | сканы по запросу |
+
+Бюджет памяти индекса — `app.index.memory-budget-mb` (1024). После каждой подмены
+индекса сервис сравнивает занятый heap с бюджетом и при превышении пишет
+предупреждение и выставляет `over_budget = 1`; вытеснение по частям появится вместе с
+tiered-моделью (F3-3). Контейнер запускается с `-Xmx1280m -XX:+ExitOnOutOfMemoryError`
+(`JAVA_TOOL_OPTIONS`) и `mem_limit: 1600m`.
+
+`PerfSmokeTest` строит на синтетике индекс звёзд за 6 часов (~300k звёзд, ~40k
+репозиториев) и меряет путь запроса (агрегаты → score → таймлайн); отчёт —
+`target/perf-smoke/report.md`, в CI — в сводке job и артефактом `perf-smoke`.
 
 ### C3 «Дисбаланс звёзды/активность»
 

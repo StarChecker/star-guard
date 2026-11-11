@@ -123,14 +123,17 @@ GH Archive не даёт дату создания аккаунта → в PoC �
 
 **DoD ветки:**
 
-- [ ] блок акторов в `RepoSnapshot` согласован с владельцем `feature/core` (контракт движка);
-- [ ] `FreshAccountsCheck` — реальный бин с формулой и gate из плана;
-- [ ] на реальных данных `confidence < 0.5`, проверка исключена из score;
-- [ ] `DataAvailability.actorHistory=false` задокументирован;
-- [ ] ложных высоких скоров нет: `fresh_farm` — высокий C2, `organic`/`no_actor_data` — низкий/неактивный;
-- [ ] фикстуры + unit/интеграционные тесты по шаблону §2.1;
-- [ ] пороги в `application.yaml`, `details` в explain;
-- [ ] PR в `feature/core` с одним ревью.
+- [x] блок акторов в `RepoSnapshot` (`starActorProfiles`), старые конструкторы сохранены;
+- [x] `FreshAccountsCheck` - реальный бин с формулой и gate из плана;
+- [x] на реальных данных `confidence < 0.5`, проверка исключена из score (`reason = no_actor_data`);
+- [x] `DataAvailability.actorHistory=false` задокументирован;
+- [x] ложных высоких скоров нет: `fresh-farm` - C2 ~ 0.97, `organic` - 0, `no-actor-data` - неактивна;
+- [x] фикстуры + unit/интеграционные тесты по шаблону §2.1;
+- [x] пороги в `app.scoring.checks.fresh-accounts.*`, `details` в explain;
+- [x] PR #6 смержен в `main`;
+- [x] индекс топ-1000 отдаёт профили акторов, explain не пишет `no_star_actors` при наличии звёзд;
+- [x] stretch: дата создания аккаунта через GitHub REST `GET /users/{login}` для топ-N индекса,
+      кэш 24 ч (`app.github.*`, по умолчанию выключено).
 
 ---
 
@@ -227,7 +230,8 @@ MinHash/LSH не делать.
 | `feature/core` | Человек 1 | ядро PoC | ✅ в `feature/core` | PR #1 смержен; 30 тестов, REST+Swagger, мок-C1–C5 |
 | `feat/c3-engagement` | Человек 2 | C3 | 🟡 PR #2 на ревью | 45 тестов зелёные локально; фикстуры `demo-star-stuffing` (C3 ≈ 0.92) и `demo-healthy-lib` (C3 = 0) |
 | `feat/c1-burst` | Человек 4 | C1 | ⬜ не начато | ветки/PR нет |
-| `feat/c2-fresh-accounts` | Человек 3 | C2 | ⬜ не начато | ветки/PR нет |
+| `feat/c2-fresh-accounts` | Человек 3 | C2 | ✅ в `main` | PR #6 смержен; фикстуры `demo-fresh-farm` (C2 ~ 0.97), `demo-organic` (C2 = 0), `demo-no-actor-data` (неактивна) |
+| `feat/c2-followups` | Человек 3 | C2 | 🔵 в работе | профили акторов в индексе, обогащение датой аккаунта через GitHub API |
 | `feat/c4-actor-overlap` | Человек 5 | C4 | ⬜ не начато | ветки/PR нет |
 | `feat/top-1000-index` | Человек 1 + команда | индекс топ-1000 | 🔵 в работе | ветка поверх PR #2; 60 тестов; `GET /api/v1/index/repos`; 404 `REPO_NOT_INDEXED` / 503 `INDEX_NOT_READY` |
 | (stretch) | Человек 2 | C5 | ⬜ stretch | вне score, отдельный PR по желанию |

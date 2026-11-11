@@ -89,6 +89,22 @@ class FreshAccountsCheckTest {
     }
 
     @Test
+    void snapshotWithStarsButWithoutProfilesReportsNoActorData() {
+        EventCounts counts = new EventCounts(12, 12, 0, 0, 0, 0, 0);
+        RepoSnapshot snapshot = new RepoSnapshot(new RepoRef("demo", "repo"), WINDOW, WINDOW.to(),
+                counts, 12, 12, null, DataAvailability.pocDefaults());
+
+        CheckResult result = check.evaluate(snapshot);
+
+        assertThat(result.score()).isZero();
+        assertThat(result.confidence()).isZero();
+        assertThat(result.details())
+                .containsEntry("reason", "no_actor_data")
+                .containsEntry("star_actors", 12)
+                .containsEntry("actors_with_data", 0);
+    }
+
+    @Test
     void firstSeenProxyIsUsedOnlyWithActorHistory() {
         List<ActorProfile> actors = actors("acc", 20, null, daysAgo(3), daysAgo(1));
 

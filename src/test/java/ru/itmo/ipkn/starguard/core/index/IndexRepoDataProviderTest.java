@@ -45,6 +45,7 @@ class IndexRepoDataProviderTest {
         assertThat(data.archive().hoursRequested()).isEqualTo(2);
         assertThat(data.archive().hoursLoaded()).isEqualTo(2);
         assertThat(data.archive().cached()).isTrue();
+        assertThat(data.starRank()).isEqualTo(1);
     }
 
     @Test

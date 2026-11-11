@@ -260,6 +260,12 @@ confidence = confidence * coverage                                # 0.9 * дол
 `fresh_actor_sample` - до `sample-hashes` (5) обезличенных хэшей свежих акторов
 (префикс SHA-256 от `actor.id`).
 
+Дату создания аккаунта можно подтянуть из GitHub REST `GET /users/{login}`:
+`app.github.enabled=true` (по умолчанию выключено), токен - `GITHUB_TOKEN`.
+Обогащаются только репозитории из топ-`app.github.top-n` (100) индекса, не больше
+`max-lookups-per-request` (50) запросов на отчёт, ответы кэшируются на `cache-ttl` (24h),
+при rate limit запросы ставятся на паузу. Сама проверка C2 во внешние системы не ходит.
+
 ### C3 «Дисбаланс звёзды/активность»
 
 ```

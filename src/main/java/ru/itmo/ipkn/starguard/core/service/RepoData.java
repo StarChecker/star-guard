@@ -10,12 +10,17 @@ import java.util.Objects;
 public record RepoData(
         TimeWindow window,
         RepoAggregate aggregate,
-        ArchiveFetchResult archive
+        ArchiveFetchResult archive,
+        Integer starRank
 ) {
 
     public RepoData {
         Objects.requireNonNull(window, "window");
         Objects.requireNonNull(aggregate, "aggregate");
         Objects.requireNonNull(archive, "archive");
+    }
+
+    public RepoData(TimeWindow window, RepoAggregate aggregate, ArchiveFetchResult archive) {
+        this(window, aggregate, archive, null);
     }
 }

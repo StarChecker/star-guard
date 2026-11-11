@@ -11,6 +11,7 @@ import ru.itmo.ipkn.starguard.core.archive.TransientArchiveException;
 import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
 import ru.itmo.ipkn.starguard.core.config.RepoIndexProperties;
 import ru.itmo.ipkn.starguard.core.config.StarIndexProperties;
+import ru.itmo.ipkn.starguard.core.domain.ActorActivity;
 import ru.itmo.ipkn.starguard.core.domain.EventCounts;
 import ru.itmo.ipkn.starguard.core.domain.EventType;
 import ru.itmo.ipkn.starguard.core.domain.GhEvent;
@@ -287,7 +288,7 @@ public class RepoIndexBuilder {
         private int pullRequests;
         private int other;
         private final int[] minutes = new int[60];
-        private final Set<Long> actors = new HashSet<>();
+        private final Map<Long, ActorActivity> actors = new HashMap<>();
         private final Set<Long> starActors = new HashSet<>();
 
         private MutableHourAggregate(String fullName) {
@@ -300,7 +301,7 @@ public class RepoIndexBuilder {
 
         private void add(GhEvent event, Instant hour) {
             total++;
-            actors.add(event.actorId());
+            actors.merge(event.actorId(), ActorActivity.of(event), ActorActivity::merge);
             switch (event.type()) {
                 case WATCH -> {
                     stars++;
@@ -324,7 +325,8 @@ public class RepoIndexBuilder {
                     new EventCounts(total, stars, forks, pushes, issues, pullRequests, other),
                     minutes,
                     actors.size(),
-                    starActors.size());
+                    starActors.size(),
+                    List.copyOf(actors.values()));
         }
     }
 }

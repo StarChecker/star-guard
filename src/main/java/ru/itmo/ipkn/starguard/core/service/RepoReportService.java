@@ -9,6 +9,7 @@ import ru.itmo.ipkn.starguard.core.archive.TimeWindowCalculator;
 import ru.itmo.ipkn.starguard.core.config.ScoringProperties;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
+import ru.itmo.ipkn.starguard.core.github.AccountAgeEnricher;
 import ru.itmo.ipkn.starguard.core.scoring.MockMode;
 import ru.itmo.ipkn.starguard.core.scoring.MockModeContext;
 import ru.itmo.ipkn.starguard.core.scoring.RepoScore;
@@ -30,6 +31,7 @@ public class RepoReportService {
     private final ScoringProperties scoringProperties;
     private final MockModeContext mockModeContext;
     private final ObjectProvider<RepoDataProvider> indexedDataProvider;
+    private final AccountAgeEnricher accountAgeEnricher;
 
     public RepoReportService(
             GhArchiveClient archiveClient,
@@ -38,7 +40,8 @@ public class RepoReportService {
             ScoringEngine scoringEngine,
             ScoringProperties scoringProperties,
             MockModeContext mockModeContext,
-            ObjectProvider<RepoDataProvider> indexedDataProvider) {
+            ObjectProvider<RepoDataProvider> indexedDataProvider,
+            AccountAgeEnricher accountAgeEnricher) {
         this.archiveClient = archiveClient;
         this.windowCalculator = windowCalculator;
         this.aggregator = aggregator;
@@ -46,6 +49,7 @@ public class RepoReportService {
         this.scoringProperties = scoringProperties;
         this.mockModeContext = mockModeContext;
         this.indexedDataProvider = indexedDataProvider;
+        this.accountAgeEnricher = accountAgeEnricher;
     }
 
     public RepoReport getReport(RepoRef repo, Integer requestedHours, MockMode requestedMockMode) {
@@ -78,10 +82,11 @@ public class RepoReportService {
         MockMode mockMode = requestedMockMode == null
                 ? scoringProperties.mockMode()
                 : requestedMockMode;
+        RepoAggregate aggregate = accountAgeEnricher.enrich(data.aggregate(), data.starRank());
         RepoScore score = mockModeContext.callWith(
                 mockMode,
-                () -> scoringEngine.score(data.aggregate().snapshot()));
+                () -> scoringEngine.score(aggregate.snapshot()));
         return new RepoReport(
-                repo, data.window(), data.aggregate().stats(), score, data.archive());
+                repo, data.window(), aggregate.stats(), score, data.archive());
     }
 }

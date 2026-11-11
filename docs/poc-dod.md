@@ -225,19 +225,26 @@ MinHash/LSH не делать.
 
 ## 4. Сводный статус на 2026-11-10
 
+Актуальная карта фич и PR: [docs/feature-map.md](feature-map.md).
+
 | Ветка | Владелец | Проверка | Статус | Чем подтверждается |
 |-------|----------|----------|--------|--------------------|
-| `feature/core` | Человек 1 | ядро PoC | ✅ в `feature/core` | PR #1 смержен; 30 тестов, REST+Swagger, мок-C1–C5 |
-| `feat/c3-engagement` | Человек 2 | C3 | 🟡 PR #2 на ревью | 45 тестов зелёные локально; фикстуры `demo-star-stuffing` (C3 ≈ 0.92) и `demo-healthy-lib` (C3 = 0) |
-| `feat/c1-burst` | Человек 4 | C1 | ⬜ не начато | ветки/PR нет |
-| `feat/c2-fresh-accounts` | Человек 3 | C2 | ✅ в `main` | PR #6 смержен; фикстуры `demo-fresh-farm` (C2 ~ 0.97), `demo-organic` (C2 = 0), `demo-no-actor-data` (неактивна) |
-| `feat/c2-followups` | Человек 3 | C2 | 🔵 в работе | профили акторов в индексе, обогащение датой аккаунта через GitHub API |
-| `feat/c4-actor-overlap` | Человек 5 | C4 | ⬜ не начато | ветки/PR нет |
-| `feat/top-1000-index` | Человек 1 + команда | индекс топ-1000 | 🔵 в работе | ветка поверх PR #2; 60 тестов; `GET /api/v1/index/repos`; 404 `REPO_NOT_INDEXED` / 503 `INDEX_NOT_READY` |
-| (stretch) | Человек 2 | C5 | ⬜ stretch | вне score, отдельный PR по желанию |
+| `feature/core` | Человек 1 | ядро PoC | ✅ merged | PR #1 (`413e37c`): домен, GH Archive, статистика, движок, REST+Swagger, моки, 30 тестов |
+| `feat/c3-engagement` | Человек 2 | C3 | ✅ merged | PR #2/#4 (`7e4ce26`): реальная C3, `CheckMode`, фикстуры `demo-star-stuffing` / `demo-healthy-lib` |
+| `feat/c1-burst` | Человек 4 | C1 | ✅ merged | PR #8 (`81345f9`): `BurstCheck`, `scoring.yaml`, фикстуры `burst_spike` / `steady_growth` / `cold_start` |
+| `feat/c2-fresh-accounts` | Человек 3 | C2 | ✅ merged | PR #6 (`3ed8f29`): `FreshAccountsCheck`, `ActorProfile`, фикстуры `fresh-farm` / `organic` / `no-actor-data` |
+| `feat/c2-followups` | Человек 3 | C2/индекс | ✅ merged | PR #10 (`38ce8da`): профили акторов в индексе, дата аккаунта из GitHub API, `window-end`, архитектурные схемы |
+| `feat/c4-actor-overlap` | Человек 5 | C4 | ✅ merged | PR #5 (`f37e7cf`): `StarIndex`, `ActorOverlapCheck`, фикстуры `farm-target` / `organic-app` |
+| `feat/top-1000-index` | Человек 1 + команда | индекс топ-1000 | ✅ merged | PR #3 (`5c41713`): двухпроходный индекс, `GET /api/v1/index/repos`, 404/503 |
+| `feat/ux-extension` | команда | API/UX | ✅ PR #7 merged | batch, badge, scan API, timeline, explain-тексты, Chrome extension, GitHub Action; tip `466926a` ещё не влит |
+| `fix/swagger-server-url` | команда | Swagger/Compose | ✅ merged | PR #9 (`0fd0883`): host запроса в Swagger, real scoring в Compose |
+| `feat/ux-extension` (follow-up) | команда | UX | ⚠️ commit без PR | `466926a`: скан за 24 ч и понятный текст при пустом окне |
+| (stretch) | Человек 2 | C5 | ⬜ mock / stretch | реальная KL-дивергенция не реализована |
 
-**Итог PoC:** готово ядро + C3 в ревью; индекс топ-1000 в работе (ветка поверх PR #2);
-для полного DoD нужны C1, C2, C4, мерж PR #2, обновление README/OpenAPI и финальное демо.
+**Итог PoC:** все PR #1–#10 влиты, `main` = `2e294e3`, локально **160 тестов**
+зелёные на JDK 25; реальные C1–C4 + индекс топ-1000 + API для расширения +
+Docker/Compose + CI. Осталось: C5 (stretch) и незамёрженный follow-up
+`feat/ux-extension` (`466926a`).
 
 ---
 

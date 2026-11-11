@@ -18,11 +18,8 @@ import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.StarIndex;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -30,17 +27,16 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.zip.GZIPInputStream;
 
 /**
  * Скачивает часовые дампы GH Archive через Feign, потоково распаковывает gzip
- * и оставляет события запрошенного репозитория.
+ * и оставляет события запрошенного репозитория. Строки чужих репозиториев
+ * парсер отбрасывает сразу после {@code repo.name} ({@link EventFilter}).
  * <p>
  * В том же проходе по дампу собирается {@link StarIndex} — звёзды всех репозиториев часа.
  * Он кэшируется по часу отдельно от событий репозитория и нужен проверке C4.
@@ -209,35 +205,24 @@ public class HttpGhArchiveClient implements GhArchiveClient {
             }
 
             List<GhEvent> events = new ArrayList<>();
-            int parseErrors = 0;
             StarIndex.Builder starIndex = starIndexProperties.enabled()
                     ? new StarIndex.Builder(starIndexProperties.maxPairsPerHour())
                     : null;
-            try (InputStream body = response.body().asInputStream();
-                 GZIPInputStream gzip = new GZIPInputStream(body);
-                 BufferedReader reader = new BufferedReader(
-                         new InputStreamReader(gzip, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    if (line.isBlank()) {
-                        continue;
+            // Нужны события репозитория и — для индекса C4 — звёзды всех репозиториев;
+            // остальные строки парсер бросает сразу после repo.name, не трогая payload.
+            EventFilter filter = starIndex == null
+                    ? EventFilter.repo(repo.fullName())
+                    : EventFilter.repo(repo.fullName()).or(EventFilter.stars());
+            int parseErrors;
+            try (InputStream body = response.body().asInputStream()) {
+                parseErrors = GhArchiveDumpReader.read(body, parser, filter, event -> {
+                    if (event.repoFullName().equalsIgnoreCase(repo.fullName())) {
+                        events.add(event);
                     }
-                    try {
-                        Optional<GhEvent> parsed = parser.parse(line);
-                        if (parsed.isEmpty()) {
-                            continue;
-                        }
-                        GhEvent event = parsed.get();
-                        if (event.repoFullName().equalsIgnoreCase(repo.fullName())) {
-                            events.add(event);
-                        }
-                        if (starIndex != null && event.type() == EventType.WATCH) {
-                            starIndex.add(event.repoFullName(), event.actorId());
-                        }
-                    } catch (MalformedEventException _) {
-                        parseErrors++;
+                    if (starIndex != null && event.type() == EventType.WATCH) {
+                        starIndex.add(event.repoFullName(), event.actorId());
                     }
-                }
+                });
             }
             StarIndex hourIndex = starIndex == null ? StarIndex.empty() : starIndex.build(1);
             if (hourIndex.available()) {

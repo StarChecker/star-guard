@@ -11,21 +11,37 @@ public final class ScanJob {
 
     public enum Status { QUEUED, RUNNING, DONE, FAILED }
 
+    /** Откуда берутся данные скана: история GitHub (быстро, любой репозиторий) или дампы GH Archive. */
+    public enum Source { GITHUB, ARCHIVE }
+
     private final String id;
     private final RepoRef repo;
     private final int hoursTotal;
+    private final Source source;
     private final Instant createdAt;
+    private final AtomicInteger stepsTotal = new AtomicInteger();
     private final AtomicInteger hoursDone = new AtomicInteger();
     private volatile Status status = Status.QUEUED;
     private volatile RepoReport report;
     private volatile String errorCode;
     private volatile String errorMessage;
 
-    ScanJob(String id, RepoRef repo, int hoursTotal, Instant createdAt) {
+    ScanJob(String id, RepoRef repo, int hoursTotal, Source source, Instant createdAt) {
         this.id = id;
         this.repo = repo;
         this.hoursTotal = hoursTotal;
+        this.source = source;
         this.createdAt = createdAt;
+        this.stepsTotal.set(hoursTotal);
+    }
+
+    public Source source() {
+        return source;
+    }
+
+    /** Всего шагов: часов архива или страниц истории GitHub. */
+    public int stepsTotal() {
+        return stepsTotal.get();
     }
 
     public String id() {
@@ -68,13 +84,16 @@ public final class ScanJob {
         status = Status.RUNNING;
     }
 
-    void progress(int done) {
+    void progress(int done, int total) {
+        if (total > 0) {
+            stepsTotal.set(total);
+        }
         hoursDone.accumulateAndGet(done, Math::max);
     }
 
     void done(RepoReport result) {
         report = result;
-        hoursDone.set(hoursTotal);
+        hoursDone.set(stepsTotal.get());
         status = Status.DONE;
     }
 

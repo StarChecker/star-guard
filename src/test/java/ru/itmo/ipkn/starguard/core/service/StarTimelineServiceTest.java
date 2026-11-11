@@ -109,6 +109,7 @@ class StarTimelineServiceTest {
         assertThat(StarTimelineService.bucketMinutes(6)).isEqualTo(10);
         assertThat(StarTimelineService.bucketMinutes(12)).isEqualTo(20);
         assertThat(StarTimelineService.bucketMinutes(24)).isEqualTo(30);
+        assertThat(StarTimelineService.bucketMinutes(30 * 24)).isEqualTo(720);
     }
 
     private static StarTimelineService service() {

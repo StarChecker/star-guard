@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import ru.itmo.ipkn.starguard.core.api.dto.RepoReportDto;
+import ru.itmo.ipkn.starguard.core.archive.ArchiveProgress;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.scoring.MockMode;
 import ru.itmo.ipkn.starguard.core.service.RepoReportService;
@@ -64,5 +65,28 @@ public class RepoController {
         MockMode requestedMockMode = MockMode.fromNullable(mockMode);
         return mapper.toDto(reportService.getReport(
                 new RepoRef(owner, name), hours, requestedMockMode));
+    }
+
+    @GetMapping("/{owner}/{name}/history")
+    @Operation(
+            summary = "Анализ любого репозитория по истории GitHub",
+            description = """
+                    Загружает последние звёзды (со временем и возрастом аккаунтов), форки, issues,
+                    PR и коммиты из GitHub GraphQL API за app.github.history.max-days (по умолчанию 30 дней)
+                    и считает score. Работает для любого существующего репозитория, но нужен GITHUB_TOKEN.
+                    C4 в этом режиме неактивна: нет индекса звёзд по другим репозиториям.
+                    """)
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Отчёт по репозиторию"),
+            @ApiResponse(responseCode = "404", description = "Репозиторий удалён/скрыт или у него нет звёзд за период"),
+            @ApiResponse(responseCode = "503", description = "Нет токена GitHub или GitHub API недоступен")
+    })
+    public RepoReportDto getRepoHistory(
+            @PathVariable @Pattern(regexp = NAME_PATTERN) String owner,
+            @PathVariable @Pattern(regexp = NAME_PATTERN) String name,
+            @Parameter(description = "PoC: профиль мок-проверок (healthy | borderline | suspicious)")
+            @RequestParam(name = "mock_mode", required = false) String mockMode) {
+        return mapper.toDto(reportService.historyReport(
+                new RepoRef(owner, name), MockMode.fromNullable(mockMode), ArchiveProgress.NONE));
     }
 }

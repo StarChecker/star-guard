@@ -1,6 +1,7 @@
 package ru.itmo.ipkn.starguard.core.service;
 
 import ru.itmo.ipkn.starguard.core.archive.ArchiveFetchResult;
+import ru.itmo.ipkn.starguard.core.domain.DataSource;
 import ru.itmo.ipkn.starguard.core.domain.StarMark;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 import ru.itmo.ipkn.starguard.core.stats.RepoAggregate;
@@ -15,13 +16,15 @@ import java.util.Objects;
  *
  * @param starRank место в топ-N индекса; null вне индекса
  * @param stars    звёзды окна: кто и когда; пустой список, если не собирались
+ * @param source   откуда данные: индекс, прямой скан GH Archive или история GitHub
  */
 public record RepoData(
         TimeWindow window,
         RepoAggregate aggregate,
         ArchiveFetchResult archive,
         Integer starRank,
-        List<StarMark> stars
+        List<StarMark> stars,
+        DataSource source
 ) {
 
     public RepoData {
@@ -29,17 +32,23 @@ public record RepoData(
         Objects.requireNonNull(aggregate, "aggregate");
         Objects.requireNonNull(archive, "archive");
         stars = stars == null ? List.of() : List.copyOf(stars);
+        source = source == null ? DataSource.archive() : source;
+    }
+
+    public RepoData(TimeWindow window, RepoAggregate aggregate, ArchiveFetchResult archive,
+                    Integer starRank, List<StarMark> stars) {
+        this(window, aggregate, archive, starRank, stars, null);
     }
 
     public RepoData(TimeWindow window, RepoAggregate aggregate, ArchiveFetchResult archive) {
-        this(window, aggregate, archive, null, List.of());
+        this(window, aggregate, archive, null, List.of(), null);
     }
 
     public RepoData(TimeWindow window, RepoAggregate aggregate, ArchiveFetchResult archive, Integer starRank) {
-        this(window, aggregate, archive, starRank, List.of());
+        this(window, aggregate, archive, starRank, List.of(), null);
     }
 
     public RepoData(TimeWindow window, RepoAggregate aggregate, ArchiveFetchResult archive, List<StarMark> stars) {
-        this(window, aggregate, archive, null, stars);
+        this(window, aggregate, archive, null, stars, null);
     }
 }

@@ -63,6 +63,11 @@ app:
     cache-ttl: 24h
     cache-max-size: 100000
     rate-limit-pause: 1m
+    history:                  # анализ любого репозитория по истории GitHub (нужен GITHUB_TOKEN)
+      max-days: 30            # глубина истории
+      max-stars: 3000         # сколько последних звёзд загружать (по 100 за запрос GraphQL)
+      existence-check: true   # скрывать из /api/v1/index/repos удалённые на GitHub репозитории
+      existence-ttl: 6h
   scoring:
     mode: mock                # mock | real — общий переключатель реализаций C1–C5
     mock-mode: healthy        # профиль моков: healthy | borderline | suspicious (только для mock-проверок)

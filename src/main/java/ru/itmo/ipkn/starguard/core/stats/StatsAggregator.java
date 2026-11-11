@@ -94,7 +94,8 @@ public class StatsAggregator {
         int peakStars10m = maxSlidingSum(starsByMinute, BURST_WINDOW_MINUTES);
 
         RepoStats stats = new RepoStats(
-                repo, window, counts, actors.size(), starActors.size(), peakStars10m, starsByHour);
+                repo, window, counts, actors.size(), starActors.size(), peakStars10m, starsByHour,
+                (int) activities.values().stream().filter(ActorActivity::contributor).count());
 
         List<ActorActivity> starActivities = ActorActivity.starredSorted(activities.values());
         RepoSnapshot snapshot = new RepoSnapshot(

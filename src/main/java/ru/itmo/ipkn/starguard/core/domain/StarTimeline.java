@@ -20,16 +20,27 @@ public record StarTimeline(
         boolean estimated,
         List<Point> points,
         int suspiciousStars,
-        Map<String, Integer> suspiciousByCheck
+        Map<String, Integer> suspiciousByCheck,
+        List<SpikeInterval> spikeIntervals
 ) {
 
+    public StarTimeline(int bucketMinutes, boolean estimated, List<Point> points,
+                        int suspiciousStars, Map<String, Integer> suspiciousByCheck) {
+        this(bucketMinutes, estimated, points, suspiciousStars, suspiciousByCheck, List.of());
+    }
+
     public StarTimeline {
+        spikeIntervals = List.copyOf(spikeIntervals);
         points = List.copyOf(Objects.requireNonNull(points, "points"));
         suspiciousByCheck = Map.copyOf(Objects.requireNonNull(suspiciousByCheck, "suspiciousByCheck"));
     }
 
     public static StarTimeline empty(int bucketMinutes) {
         return new StarTimeline(bucketMinutes, false, List.of(), 0, Map.of());
+    }
+
+    /** Самое насыщенное окно C1 [from, to); peak — максимум звёзд за минуту. */
+    public record SpikeInterval(Instant from, Instant to, long stars, double ratio, int peak, boolean suspicious) {
     }
 
     /** Одна точка: начало интервала, все звёзды и подозрительные из них. */

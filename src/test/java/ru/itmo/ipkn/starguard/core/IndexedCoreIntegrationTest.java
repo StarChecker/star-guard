@@ -68,6 +68,10 @@ class IndexedCoreIntegrationTest {
                 .andExpect(jsonPath("$.repo.full_name").value("a/one"))
                 .andExpect(jsonPath("$.window.hours").value(2))
                 .andExpect(jsonPath("$.stats.stars").value(3))
+                .andExpect(jsonPath("$.stats.star_actors").value(2))
+                .andExpect(jsonPath("$.stats.unique_actors").value(3))
+                .andExpect(jsonPath("$.stats.contributors").value(1))
+                .andExpect(jsonPath("$.suspicious_actors").isArray())
                 .andExpect(jsonPath("$.archive.hours_loaded").value(2))
                 .andExpect(jsonPath("$.archive.cached").value(true))
                 .andExpect(jsonPath("$.score.mocked").value(true));

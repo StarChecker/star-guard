@@ -10,7 +10,9 @@ import ru.itmo.ipkn.starguard.core.api.dto.ScoreDto;
 import ru.itmo.ipkn.starguard.core.api.dto.SourceDto;
 import ru.itmo.ipkn.starguard.core.api.dto.StarTimelineDto;
 import ru.itmo.ipkn.starguard.core.api.dto.StatsDto;
+import ru.itmo.ipkn.starguard.core.api.dto.SuspiciousActorDto;
 import ru.itmo.ipkn.starguard.core.api.dto.WindowDto;
+import ru.itmo.ipkn.starguard.core.domain.DataSource;
 import ru.itmo.ipkn.starguard.core.domain.EventCounts;
 import ru.itmo.ipkn.starguard.core.domain.RepoStats;
 import ru.itmo.ipkn.starguard.core.domain.StarTimeline;
@@ -45,7 +47,8 @@ public class RepoReportMapper {
                         stats.peakStars10m(),
                         stats.starsByHour().stream()
                                 .map(bucket -> new HourBucketDto(bucket.hour(), bucket.stars()))
-                                .toList()),
+                                .toList(),
+                        report.source().type() == DataSource.Type.GITHUB_API ? null : stats.contributors()),
                 new ScoreDto(
                         score.score(),
                         score.level().name().toLowerCase(Locale.ROOT),
@@ -67,7 +70,11 @@ public class RepoReportMapper {
                         report.source().type().name().toLowerCase(Locale.ROOT),
                         report.source().starsSampled(),
                         report.source().starsTotal(),
-                        report.source().coverageFrom()));
+                        report.source().coverageFrom()),
+                report.suspiciousActors().stream().map(actor -> new SuspiciousActorDto(
+                        actor.actorHash(), actor.login(), actor.reasons(), actor.accountCreatedAt(),
+                        actor.firstSeen(), actor.sharedRepos())).toList(),
+                report.suspiciousActorsTotal());
     }
 
     private CheckDto toCheck(CheckContribution contribution, RepoStats stats) {
@@ -92,6 +99,9 @@ public class RepoReportMapper {
                 timeline.suspiciousByCheck(),
                 timeline.points().stream()
                         .map(point -> new StarTimelineDto.PointDto(point.at(), point.stars(), point.suspicious()))
-                        .toList());
+                        .toList(),
+                timeline.spikeIntervals().stream().map(interval -> new StarTimelineDto.SpikeIntervalDto(
+                        interval.from(), interval.to(), interval.stars(), interval.ratio(), interval.peak(),
+                        interval.suspicious())).toList());
     }
 }

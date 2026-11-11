@@ -58,9 +58,19 @@ class StatsAggregatorTest {
         assertThat(counts.other()).isEqualTo(1);
         assertThat(stats.uniqueActors()).isEqualTo(6);
         assertThat(stats.starActors()).isEqualTo(2);
+        assertThat(stats.contributors()).isEqualTo(4);
         assertThat(stats.starsByHour()).hasSize(3);
         assertThat(stats.starsByHour().get(0).stars()).isEqualTo(2);
         assertThat(stats.starsByHour().get(1).stars()).isZero();
+    }
+
+    @Test
+    void contributorsIncludeStarredActorsButExcludeOtherEventsAndDeduplicateAcrossHours() {
+        var events = List.of(event("a", EventType.WATCH, 1, 1),
+                event("b", EventType.PUSH, 1, 2), event("c", EventType.PUSH, 1, 70),
+                event("d", EventType.ISSUES, 2, 80), event("e", EventType.PULL_REQUEST, 2, 90),
+                event("f", EventType.OTHER, 3, 95), event("g", EventType.PUSH, 4, 181));
+        assertThat(aggregator.aggregate(REPO, WINDOW, events).stats().contributors()).isEqualTo(2);
     }
 
     @Test

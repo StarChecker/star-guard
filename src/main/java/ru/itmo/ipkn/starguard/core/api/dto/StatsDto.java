@@ -18,6 +18,8 @@ public record StatsDto(
         @Schema(example = "138") int starActors,
         @JsonProperty("peak_stars_10m")
         @Schema(description = "Максимум звёзд в любом 10-минутном окне", example = "9") int peakStars10m,
-        List<HourBucketDto> starsByHour
+        List<HourBucketDto> starsByHour,
+        @Schema(description = "Уникальные участники fork/push/issues/PR в окне, включая поставивших звёзды; null без полных данных об участниках", nullable = true)
+        Integer contributors
 ) {
 }

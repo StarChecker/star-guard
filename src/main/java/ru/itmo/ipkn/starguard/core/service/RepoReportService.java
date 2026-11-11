@@ -40,6 +40,7 @@ public class RepoReportService {
     private final MockModeContext mockModeContext;
     private final ObjectProvider<RepoDataProvider> indexedDataProvider;
     private final StarTimelineService timelineService;
+    private final SuspiciousActorsService suspiciousActorsService;
     private final AccountAgeEnricher accountAgeEnricher;
     private final GithubHistoryService historyService;
 
@@ -52,6 +53,7 @@ public class RepoReportService {
             MockModeContext mockModeContext,
             ObjectProvider<RepoDataProvider> indexedDataProvider,
             StarTimelineService timelineService,
+            SuspiciousActorsService suspiciousActorsService,
             AccountAgeEnricher accountAgeEnricher,
             GithubHistoryService historyService) {
         this.archiveClient = archiveClient;
@@ -62,6 +64,7 @@ public class RepoReportService {
         this.mockModeContext = mockModeContext;
         this.indexedDataProvider = indexedDataProvider;
         this.timelineService = timelineService;
+        this.suspiciousActorsService = suspiciousActorsService;
         this.accountAgeEnricher = accountAgeEnricher;
         this.historyService = historyService;
     }
@@ -126,8 +129,11 @@ public class RepoReportService {
         RepoScore score = mockModeContext.callWith(
                 mockMode,
                 () -> scoringEngine.score(aggregate.snapshot()));
-        StarTimeline timeline = timelineService.build(aggregate.snapshot(), score, data.stars());
+        var flags = suspiciousActorsService.flags(aggregate.snapshot(), score, data.stars(), aggregate.starActors());
+        StarTimeline timeline = timelineService.build(aggregate.snapshot(), score, data.stars(), flags);
         return new RepoReport(
-                repo, data.window(), aggregate.stats(), score, data.archive(), timeline, data.source());
+                repo, data.window(), aggregate.stats(), score, data.archive(), timeline, data.source(),
+                suspiciousActorsService.sample(aggregate.snapshot(), aggregate.starActors(), data.stars(), flags),
+                flags.size());
     }
 }

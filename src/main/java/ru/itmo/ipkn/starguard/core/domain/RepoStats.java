@@ -11,8 +11,14 @@ public record RepoStats(
         int uniqueActors,
         int starActors,
         int peakStars10m,
-        List<HourBucket> starsByHour
+        List<HourBucket> starsByHour,
+        Integer contributors
 ) {
+
+    public RepoStats(RepoRef repo, TimeWindow window, EventCounts counts, int uniqueActors,
+                     int starActors, int peakStars10m, List<HourBucket> starsByHour) {
+        this(repo, window, counts, uniqueActors, starActors, peakStars10m, starsByHour, null);
+    }
 
     public RepoStats {
         Objects.requireNonNull(repo, "repo");

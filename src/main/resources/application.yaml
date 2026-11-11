@@ -36,6 +36,9 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  api:
+    actor-logins: show        # show | hash; без профиля всегда hash
+    suspicious-actors-limit: 50  # лимит ответа API; карточка сначала показывает 5
   archive:
     base-url: https://data.gharchive.org
     mode: http                # http | fixture

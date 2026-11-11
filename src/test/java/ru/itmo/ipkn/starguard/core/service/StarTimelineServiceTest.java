@@ -3,6 +3,9 @@ package ru.itmo.ipkn.starguard.core.service;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import ru.itmo.ipkn.starguard.core.config.ActorOverlapProperties;
+import ru.itmo.ipkn.starguard.core.config.ApiProperties;
+import ru.itmo.ipkn.starguard.core.config.BurstProperties;
+import ru.itmo.ipkn.starguard.core.scoring.CheckMode;
 import ru.itmo.ipkn.starguard.core.domain.DataAvailability;
 import ru.itmo.ipkn.starguard.core.domain.EventCounts;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
@@ -112,12 +115,80 @@ class StarTimelineServiceTest {
         assertThat(StarTimelineService.bucketMinutes(30 * 24)).isEqualTo(720);
     }
 
+    @Test
+    void spikeKeepsExactSlidingWindowAcrossHourBoundary() {
+        int[] minutes = new int[120];
+        minutes[58] = 8;
+        minutes[60] = 12;
+        RepoSnapshot snapshot = snapshot(StarIndex.empty(), minutes);
+        var burst = new ru.itmo.ipkn.starguard.core.scoring.BurstCheck(
+                new BurstProperties(CheckMode.REAL, true, 3.0, 12.0, 10, 60, .3)).evaluate(snapshot);
+        var score = new RepoScore(70, ScoreLevel.HIGH, 1, false, List.of(new CheckContribution(
+                CheckIds.BURST, burst.score(), burst.confidence(), .3, .3, true, null, burst.details())),
+                false, List.of(), WINDOW.to());
+        var interval = service().build(snapshot, score, List.of()).spikeIntervals().getFirst();
+        assertThat(interval.from()).isEqualTo(FROM.plusSeconds(51 * 60));
+        assertThat(interval.to()).isEqualTo(FROM.plusSeconds(61 * 60));
+        assertThat(interval.stars()).isEqualTo(20);
+        assertThat(interval.ratio()).isEqualTo(20);
+        assertThat(interval.peak()).isEqualTo(12);
+        assertThat(interval.suspicious()).isTrue();
+    }
+
+    @Test
+    void mockAndInactiveBurstOnlyProduceNeutralIntervals() {
+        int[] minutes = new int[120];
+        minutes[119] = 20;
+        for (boolean mocked : List.of(true, false)) {
+            var score = new RepoScore(70, ScoreLevel.HIGH, 1, false, List.of(new CheckContribution(
+                    CheckIds.BURST, 1, 1, .3, .3, mocked, null, Map.of("mocked", mocked))),
+                    mocked, List.of(), WINDOW.to());
+            var interval = service().build(snapshot(StarIndex.empty(), minutes), score, List.of())
+                    .spikeIntervals().getFirst();
+            assertThat(interval.suspicious()).isFalse();
+            assertThat(interval.from()).isEqualTo(FROM.plusSeconds(110 * 60));
+            assertThat(interval.to()).isEqualTo(WINDOW.to());
+        }
+    }
+
+    @Test
+    void emptySmallAndSteadySeriesHaveNoSpike() {
+        int[] small = new int[120];
+        small[0] = 9;
+        int[] steady = new int[120];
+        java.util.Arrays.fill(steady, 2);
+        for (int[] minutes : List.of(new int[120], small, steady)) {
+            assertThat(service().build(snapshot(StarIndex.empty(), minutes), score(true, true), List.of())
+                    .spikeIntervals()).isEmpty();
+        }
+        assertThat(service().build(snapshot(StarIndex.empty(), null), score(true, true), List.of())
+                .spikeIntervals()).isEmpty();
+    }
+
+    @Test
+    void hourEstimatesPreserveRareStarsAndWorkForMultiHourBuckets() {
+        var window = new TimeWindow(FROM, FROM.plusSeconds(96 * 3600), 96);
+        int[] minutes = new int[96 * 60];
+        minutes[0] = 1;
+        minutes[20] = 1;
+        minutes[40] = 1;
+        var snapshot = new RepoSnapshot(new RepoRef("demo", "target"), window, window.to(), EventCounts.empty(),
+                3, 3, minutes, DataAvailability.pocDefaults(), farmIndex());
+        var marks = List.of(new StarMark(FROM, 1, true), new StarMark(FROM, 201, true),
+                new StarMark(FROM, 202, true));
+        var timeline = service().build(snapshot, score(true, false), marks);
+        assertThat(timeline.bucketMinutes()).isEqualTo(180);
+        assertThat(timeline.points().getFirst().suspicious()).isEqualTo(1);
+        assertThat(timeline.points().stream().mapToInt(StarTimeline.Point::suspicious).sum()).isEqualTo(1);
+    }
+
     private static StarTimelineService service() {
         DefaultListableBeanFactory factory = new DefaultListableBeanFactory();
         factory.registerSingleton("actorOverlap", new ActorOverlapCheck(ActorOverlapProperties.defaults()));
-        return new StarTimelineService(
+        return new StarTimelineService(new SuspiciousActorsService(
                 factory.getBeanProvider(ActorOverlapCheck.class),
-                factory.getBeanProvider(FreshAccountsCheck.class));
+                factory.getBeanProvider(FreshAccountsCheck.class), new ApiProperties(null, null)),
+                new BurstProperties(CheckMode.REAL, true, 3.0, 12.0, 10, 60, 0.3));
     }
 
     private static StarIndex farmIndex() {

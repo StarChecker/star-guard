@@ -43,6 +43,7 @@ class RepoStatsComposerTest {
         assertThat(aggregate.stats().counts().stars()).isEqualTo(10);
         assertThat(aggregate.stats().counts().pushes()).isEqualTo(4);
         assertThat(aggregate.stats().uniqueActors()).isEqualTo(7);
+        assertThat(aggregate.stats().contributors()).isNull();
         assertThat(aggregate.stats().starActors()).isEqualTo(4);
         assertThat(aggregate.stats().starsByHour()).hasSize(2);
         assertThat(aggregate.stats().peakStars10m()).isEqualTo(10);
@@ -79,6 +80,22 @@ class RepoStatsComposerTest {
                 .filteredOn(profile -> profile.actorHash().equals(ActorProfile.hashOf(2)))
                 .extracting(ActorProfile::accountCreatedAt)
                 .containsExactly(createdAt);
+    }
+
+    @Test
+    void deduplicatesContributorsAndActorsAcrossHoursOfSelectedWindow() {
+        var before = withActors(H07, new ActorActivity(9, "before", H07, H07, null, false));
+        var first = withActors(H08,
+                new ActorActivity(1, "dev", H08, H08, null, true),
+                new ActorActivity(2, "watcher", H08, null, null, true));
+        var second = withActors(H09,
+                new ActorActivity(1, "dev", H09, H09, null, true),
+                new ActorActivity(3, "other", H09, H09, null, false, false));
+        var aggregate = RepoStatsComposer.compose(REPO, WINDOW_2H, List.of(before, first, second), CLOCK);
+        assertThat(aggregate.stats().contributors()).isEqualTo(1);
+        assertThat(aggregate.stats().uniqueActors()).isEqualTo(3);
+        assertThat(aggregate.stats().starActors()).isEqualTo(2);
+        assertThat(aggregate.snapshot().starActors()).isEqualTo(2);
     }
 
     private static RepoHourAggregate withActors(Instant hour, ActorActivity... actors) {

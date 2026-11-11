@@ -45,7 +45,14 @@ class UxApiIntegrationTest {
                 .andExpect(jsonPath("$.stars_timeline.estimated").value(false))
                 .andExpect(jsonPath("$.stars_timeline.points", hasSize(18)))
                 .andExpect(jsonPath("$.stars_timeline.suspicious_stars").value(30))
-                .andExpect(jsonPath("$.stars_timeline.suspicious_by_check.actor_overlap").value(30));
+                .andExpect(jsonPath("$.stars_timeline.suspicious_by_check.actor_overlap").value(30))
+                .andExpect(jsonPath("$.stars_timeline.spike_intervals[0].suspicious").value(false))
+                .andExpect(jsonPath("$.suspicious_actors", hasSize(30)))
+                .andExpect(jsonPath("$.suspicious_actors_total").value(30))
+                .andExpect(jsonPath("$.suspicious_actors[0].login").isString())
+                .andExpect(jsonPath("$.suspicious_actors[0].first_seen").isString())
+                .andExpect(jsonPath("$.suspicious_actors[0].account_created_at").isEmpty())
+                .andExpect(jsonPath("$.stats.contributors").value(1));
     }
 
     @Test
@@ -62,7 +69,9 @@ class UxApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.stars_timeline.suspicious_by_check.fresh_accounts",
                         greaterThanOrEqualTo(20)))
-                .andExpect(jsonPath("$.score.checks[1].summary", containsString("моложе 30 дн.")));
+                .andExpect(jsonPath("$.score.checks[1].summary", containsString("моложе 30 дн.")))
+                .andExpect(jsonPath("$.suspicious_actors[0].reasons[0]").value("fresh"))
+                .andExpect(jsonPath("$.suspicious_actors[0].account_created_at").isString());
     }
 
     @Test
@@ -130,7 +139,9 @@ class UxApiIntegrationTest {
         mockMvc.perform(get("/api/v1/scans/" + id))
                 .andExpect(jsonPath("$.hours_done").value(3))
                 .andExpect(jsonPath("$.report.repo.full_name").value("demo/farm-target"))
-                .andExpect(jsonPath("$.report.stars_timeline.suspicious_stars").value(30));
+                .andExpect(jsonPath("$.report.stars_timeline.suspicious_stars").value(30))
+                .andExpect(jsonPath("$.report.suspicious_actors", hasSize(30)))
+                .andExpect(jsonPath("$.report.stats.contributors").value(1));
 
         // повторный запуск того же скана возвращает тот же id
         mockMvc.perform(post("/api/v1/scans")

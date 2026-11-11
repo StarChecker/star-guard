@@ -20,8 +20,8 @@ import java.util.Map;
 
 /**
  * Собирает отчёт за запрошенное подокно из почасовых агрегатов индекса.
- * uniqueActors/starActors суммируются по часам (верхняя граница, без дедупликации
- * между часами) — этого достаточно для PoC, где проверки замоканы.
+ * Акторы и контрибьюторы дедуплицируются между часами. Без полных профилей
+ * uniqueActors/starActors остаются верхней границей, contributors неизвестно (null).
  */
 public final class RepoStatsComposer {
 
@@ -63,6 +63,7 @@ public final class RepoStatsComposer {
         int other = 0;
         int uniqueActors = 0;
         int starActors = 0;
+        boolean completeActors = true;
         int[] starsByMinute = new int[hours * 60];
         List<HourBucket> hourBuckets = new ArrayList<>(hours);
         Map<Long, ActorActivity> activities = new HashMap<>();
@@ -79,6 +80,7 @@ public final class RepoStatsComposer {
             other += counts.other();
             uniqueActors += hour.uniqueActors();
             starActors += hour.starActors();
+            completeActors &= hour.actors().size() >= hour.uniqueActors();
             System.arraycopy(hour.starsByMinute(), 0, starsByMinute, i * 60, 60);
             hourBuckets.add(new HourBucket(hour.hour(), counts.stars()));
             hour.actors().forEach(actor -> activities.merge(actor.actorId(), actor, ActorActivity::merge));
@@ -87,9 +89,16 @@ public final class RepoStatsComposer {
         EventCounts counts = new EventCounts(
                 total, stars, forks, pushes, issues, pullRequests, other);
         int peakStars10m = StatsAggregator.maxSlidingSum(starsByMinute, BURST_WINDOW_MINUTES);
-        RepoStats stats = new RepoStats(
-                repo, window, counts, uniqueActors, starActors, peakStars10m, hourBuckets);
         List<ActorActivity> starActivities = ActorActivity.starredSorted(activities.values());
+        if (completeActors) {
+            uniqueActors = activities.size();
+            starActors = starActivities.size();
+        }
+        Integer contributors = completeActors
+                ? Integer.valueOf((int) activities.values().stream().filter(ActorActivity::contributor).count())
+                : (forks + pushes + issues + pullRequests == 0 ? Integer.valueOf(0) : null);
+        RepoStats stats = new RepoStats(
+                repo, window, counts, uniqueActors, starActors, peakStars10m, hourBuckets, contributors);
         RepoSnapshot snapshot = new RepoSnapshot(
                 repo,
                 window,

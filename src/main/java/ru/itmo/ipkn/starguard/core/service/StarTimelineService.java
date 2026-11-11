@@ -1,22 +1,20 @@
 package ru.itmo.ipkn.starguard.core.service;
 
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
-import ru.itmo.ipkn.starguard.core.domain.ActorProfile;
+import ru.itmo.ipkn.starguard.core.config.BurstProperties;
 import ru.itmo.ipkn.starguard.core.domain.RepoSnapshot;
 import ru.itmo.ipkn.starguard.core.domain.StarMark;
 import ru.itmo.ipkn.starguard.core.domain.StarTimeline;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
-import ru.itmo.ipkn.starguard.core.scoring.ActorOverlapCheck;
+import ru.itmo.ipkn.starguard.core.scoring.BurstCheck;
 import ru.itmo.ipkn.starguard.core.scoring.CheckContribution;
 import ru.itmo.ipkn.starguard.core.scoring.CheckIds;
-import ru.itmo.ipkn.starguard.core.scoring.FreshAccountsCheck;
 import ru.itmo.ipkn.starguard.core.scoring.RepoScore;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -28,22 +26,25 @@ import java.util.TreeMap;
  * Звезду помечает подозрительной реальная (не мок) и активная проверка с ненулевым score,
  * которая умеет назвать «плохих» акторов: C4 (аккаунты фермы) и C2 (свежие/пустые аккаунты).
  * Если проверка в целом ничего не нашла, единичные совпадения не подсвечиваются — это шум.
- * C1 добавится сюда, когда появится реальная реализация с минутами всплесков.
+ * C1 даёт отдельный интервал пика, не меняя число звёзд, отмеченных C2/C4.
  */
 @Service
 public class StarTimelineService {
 
-    private final ObjectProvider<ActorOverlapCheck> actorOverlap;
-    private final ObjectProvider<FreshAccountsCheck> freshAccounts;
+    private final SuspiciousActorsService actorsService;
+    private final BurstProperties burstProperties;
 
-    public StarTimelineService(
-            ObjectProvider<ActorOverlapCheck> actorOverlap,
-            ObjectProvider<FreshAccountsCheck> freshAccounts) {
-        this.actorOverlap = actorOverlap;
-        this.freshAccounts = freshAccounts;
+    public StarTimelineService(SuspiciousActorsService actorsService, BurstProperties burstProperties) {
+        this.actorsService = actorsService;
+        this.burstProperties = burstProperties;
     }
 
     public StarTimeline build(RepoSnapshot snapshot, RepoScore score, List<StarMark> stars) {
+        return build(snapshot, score, stars, actorsService.flags(snapshot, score, stars));
+    }
+
+    public StarTimeline build(RepoSnapshot snapshot, RepoScore score, List<StarMark> stars,
+                              Map<Long, Set<String>> flags) {
         TimeWindow window = snapshot.window();
         int bucketMinutes = bucketMinutes(window.hours());
         int totalMinutes = window.hours() * 60;
@@ -51,11 +52,11 @@ public class StarTimelineService {
 
         int[] starsPerBucket = new int[buckets];
         int[] perMinute = snapshot.starsByMinute();
+        if (perMinute == null) return StarTimeline.empty(bucketMinutes);
         for (int minute = 0; minute < Math.min(perMinute.length, totalMinutes); minute++) {
             starsPerBucket[minute / bucketMinutes] += perMinute[minute];
         }
 
-        Map<Long, Set<String>> flags = flaggedActors(snapshot, score, stars);
         int[] suspiciousPerBucket = new int[buckets];
         Map<Integer, int[]> hourTotals = new TreeMap<>();
         Map<String, Integer> byCheck = new HashMap<>();
@@ -63,7 +64,7 @@ public class StarTimelineService {
 
         for (StarMark mark : stars) {
             long minute = Duration.between(window.from(), mark.at()).toMinutes();
-            if (minute < 0 || minute >= totalMinutes) {
+            if (mark.at().isBefore(window.from()) || !mark.at().isBefore(window.to())) {
                 continue;
             }
             Set<String> reasons = flags.get(mark.actorId());
@@ -93,10 +94,16 @@ public class StarTimelineService {
             }
             estimated = true;
             double share = (double) totals[1] / totals[0];
-            int firstBucket = entry.getKey() * 60 / bucketMinutes;
-            int lastBucket = Math.min(buckets, (entry.getKey() + 1) * 60 / bucketMinutes);
-            for (int bucket = firstBucket; bucket < lastBucket; bucket++) {
-                suspiciousPerBucket[bucket] += (int) Math.round(starsPerBucket[bucket] * share);
+            int startMinute = entry.getKey() * 60;
+            int endMinute = Math.min(perMinute.length, startMinute + 60);
+            int cumulative = 0;
+            int assigned = 0;
+            // Работает и для бакетов длиннее часа; округление не теряет редкие звёзды.
+            for (int minute = startMinute; minute < endMinute; minute++) {
+                cumulative += perMinute[minute];
+                int next = (int) Math.round(cumulative * share);
+                suspiciousPerBucket[minute / bucketMinutes] += next - assigned;
+                assigned = next;
             }
         }
 
@@ -107,7 +114,8 @@ public class StarTimelineService {
                     starsPerBucket[bucket],
                     Math.min(starsPerBucket[bucket], suspiciousPerBucket[bucket])));
         }
-        return new StarTimeline(bucketMinutes, estimated, points, suspiciousStars, byCheck);
+        return new StarTimeline(bucketMinutes, estimated, points, suspiciousStars, byCheck,
+                spikeIntervals(snapshot, score, perMinute));
     }
 
     static int bucketMinutes(int hours) {
@@ -133,43 +141,31 @@ public class StarTimelineService {
         return 720;
     }
 
-    private Map<Long, Set<String>> flaggedActors(
-            RepoSnapshot snapshot, RepoScore score, List<StarMark> stars) {
-        Map<Long, Set<String>> flags = new HashMap<>();
-        if (stars.isEmpty()) {
-            return flags;
+    private List<StarTimeline.SpikeInterval> spikeIntervals(RepoSnapshot snapshot, RepoScore score, int[] minutes) {
+        // В real-режиме берём точные details уже выполненного C1. Иначе считаем
+        // те же наблюдаемые величины, но не выдаём mock-score за подозрение.
+        Map<String, Object> details = score.checks().stream()
+                .filter(check -> check.checkId().equals(CheckIds.BURST))
+                .filter(check -> !Boolean.TRUE.equals(check.details().get("mocked")))
+                .map(CheckContribution::details)
+                .filter(value -> value.containsKey("window_start"))
+                .findFirst().orElseGet(() -> new BurstCheck(burstProperties).evaluate(snapshot).details());
+        if (!(details.get("max_burst_10m") instanceof Number stars)
+                || !(details.get("ratio") instanceof Number ratio)
+                || stars.longValue() < burstProperties.minBurst()
+                || ratio.doubleValue() <= burstProperties.ratioFloor()) {
+            return List.of();
         }
-
-        ActorOverlapCheck overlap = actorOverlap.getIfAvailable();
-        if (overlap != null && isRealAndActive(score, CheckIds.ACTOR_OVERLAP)) {
-            for (Long actor : overlap.flaggedActors(snapshot)) {
-                flags.computeIfAbsent(actor, id -> new HashSet<>()).add(CheckIds.ACTOR_OVERLAP);
-            }
+        Instant from = Instant.parse(details.get("window_start").toString());
+        Instant to = from.plus(Duration.ofMinutes(Math.min(10, minutes.length)));
+        if (to.isAfter(snapshot.window().to())) to = snapshot.window().to();
+        int start = (int) Duration.between(snapshot.window().from(), from).toMinutes();
+        int end = (int) Duration.between(snapshot.window().from(), to).toMinutes();
+        int peak = 0;
+        for (int i = Math.max(0, start); i < Math.min(minutes.length, end); i++) {
+            peak = Math.max(peak, minutes[i]);
         }
-
-        FreshAccountsCheck fresh = freshAccounts.getIfAvailable();
-        if (fresh != null && isRealAndActive(score, CheckIds.FRESH_ACCOUNTS)) {
-            Set<String> freshHashes = fresh.freshActorHashes(snapshot);
-            if (!freshHashes.isEmpty()) {
-                Set<Long> actors = new HashSet<>();
-                stars.forEach(mark -> actors.add(mark.actorId()));
-                for (long actor : actors) {
-                    if (freshHashes.contains(ActorProfile.hashOf(actor))) {
-                        flags.computeIfAbsent(actor, id -> new HashSet<>()).add(CheckIds.FRESH_ACCOUNTS);
-                    }
-                }
-            }
-        }
-        return flags;
-    }
-
-    private static boolean isRealAndActive(RepoScore score, String checkId) {
-        return score.checks().stream()
-                .filter(check -> check.checkId().equals(checkId))
-                .anyMatch(check -> check.active() && check.score() > 0 && !isMocked(check));
-    }
-
-    private static boolean isMocked(CheckContribution check) {
-        return Boolean.TRUE.equals(check.details().get("mocked"));
+        return List.of(new StarTimeline.SpikeInterval(from, to, stars.longValue(), ratio.doubleValue(), peak,
+                SuspiciousActorsService.isRealAndActive(score, CheckIds.BURST)));
     }
 }

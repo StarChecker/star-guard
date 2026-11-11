@@ -13,12 +13,18 @@ public record ActorActivity(
         Instant firstSeen,
         Instant lastActivityAt,
         Instant accountCreatedAt,
-        boolean starred
+        boolean starred,
+        boolean contributor
 ) {
 
     public ActorActivity {
         Objects.requireNonNull(firstSeen, "firstSeen");
         login = login == null ? "" : login;
+    }
+
+    public ActorActivity(long actorId, String login, Instant firstSeen, Instant lastActivityAt,
+                         Instant accountCreatedAt, boolean starred) {
+        this(actorId, login, firstSeen, lastActivityAt, accountCreatedAt, starred, lastActivityAt != null);
     }
 
     public static ActorActivity of(GhEvent event) {
@@ -29,7 +35,11 @@ public record ActorActivity(
                 event.createdAt(),
                 star ? null : event.createdAt(),
                 event.actorCreatedAt(),
-                star);
+                star,
+                switch (event.type()) {
+                    case FORK, PUSH, ISSUES, PULL_REQUEST -> true;
+                    default -> false;
+                });
     }
 
     public ActorActivity merge(ActorActivity other) {
@@ -39,11 +49,12 @@ public record ActorActivity(
                 firstSeen.isAfter(other.firstSeen) ? other.firstSeen : firstSeen,
                 latest(lastActivityAt, other.lastActivityAt),
                 accountCreatedAt != null ? accountCreatedAt : other.accountCreatedAt,
-                starred || other.starred);
+                starred || other.starred,
+                contributor || other.contributor);
     }
 
     public ActorActivity withAccountCreatedAt(Instant createdAt) {
-        return new ActorActivity(actorId, login, firstSeen, lastActivityAt, createdAt, starred);
+        return new ActorActivity(actorId, login, firstSeen, lastActivityAt, createdAt, starred, contributor);
     }
 
     public ActorProfile toProfile() {

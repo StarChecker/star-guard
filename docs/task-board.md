@@ -75,10 +75,10 @@
 
 | ID | Задача | Владелец | Оценка | Dep | Статус | Ветка / PR |
 |----|--------|----------|--------|-----|--------|------------|
-| F5-1 | GitHub-клиент stats/forks/issues/contributors, кэш | Dev 5 · `@writenowme` | 2 | — | ✅ | REST-клиент + кэш + пауза по rate limit — PR F5; история GraphQL — [PR #11](https://github.com/StarChecker/star-guard/pull/11) |
-| F5-2 | `GET /api/v1/preview/{owner}/{name}` | Dev 5 · `@writenowme` | 1 | F5-1 | ✅ | `source=github`, `partial=true` — PR F5 |
+| F5-1 | GitHub-клиент stats/forks/issues/contributors, кэш | Dev 5 · `@writenowme` | 2 | — | ✅ | REST-клиент + кэш + пауза по rate limit — [PR #16](https://github.com/StarChecker/star-guard/pull/16); история GraphQL — [PR #11](https://github.com/StarChecker/star-guard/pull/11) |
+| F5-2 | `GET /api/v1/preview/{owner}/{name}` | Dev 5 · `@writenowme` | 1 | F5-1 | ✅ | `source=github`, `partial=true` — [PR #16](https://github.com/StarChecker/star-guard/pull/16) |
 | F5-3 | Extension/MCP: preview в состоянии «нет событий» | Dev 4 · `@nenerower` | 1 | F5-2 | ⬜ | — |
-| F5-4 | WireMock-тесты, OpenAPI, документация | Dev 5 · `@writenowme` | 1 | F5-1…F5-3 | ✅ | `GithubPreviewIntegrationTest`, OpenAPI, README — PR F5 |
+| F5-4 | WireMock-тесты, OpenAPI, документация | Dev 5 · `@writenowme` | 1 | F5-1…F5-3 | ✅ | `GithubPreviewIntegrationTest`, OpenAPI, README — [PR #16](https://github.com/StarChecker/star-guard/pull/16) |
 
 ## X. Кросс-задачи
 

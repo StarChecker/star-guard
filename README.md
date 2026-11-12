@@ -146,7 +146,7 @@ curl "http://localhost:8080/api/v1/repos/demo/organic-app?hours=3"
 | `GET` | `/v3/api-docs.yaml` | OpenAPI 3 YAML |
 | `GET` | `/swagger-ui.html` | Swagger UI |
 | `GET` | `/actuator/health` | health check |
-| `GET` | `/actuator/prometheus` | метрики Prometheus: `starguard_index_*`, `starguard_scan_*`, JVM |
+| `GET` | `/actuator/prometheus` | метрики Prometheus: `starguard_index_*`, `starguard_scan_*`, `starguard_parse_*`, JVM |
 
 Параметры запроса:
 
@@ -381,6 +381,13 @@ API трекера: `GET /api/v1/tracker/status`, `GET /api/v1/tracker/repos/{ow
 | `starguard_index_age` | возраст индекса, секунды |
 | `starguard_index_memory_bytes`, `..._budget_bytes`, `..._over_budget` | heap после сборки индекса против бюджета |
 | `starguard_scan_latency_seconds{source,outcome}`, `starguard_scan_active` | сканы по запросу |
+| `starguard_parse_lines_total{source}`, `..._bytes_total`, `..._errors_total` | строки GH Archive, распакованные байты и битые строки; `source = index \| scan` |
+| `starguard_parse_hours_total{source,outcome}` | попытки чтения часов: `parsed`, `missing`, `failed`, `error` (будет повтор) |
+| `starguard_parse_hour_duration_seconds{source}` | чтение и разбор одного часового дампа |
+| `starguard_parse_lines_per_second{source}` | скорость разбора последнего часа |
+
+Скорость разбора за период — `rate(starguard_parse_lines_total[5m])`; gauge
+`lines_per_second` показывает скорость самого разбора, без простоев между сборками.
 
 Бюджет памяти индекса — `app.index.memory-budget-mb` (1024). После каждой подмены
 индекса сервис сравнивает занятый heap с бюджетом и при превышении пишет

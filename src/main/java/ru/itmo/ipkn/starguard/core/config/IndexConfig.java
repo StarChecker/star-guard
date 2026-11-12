@@ -14,6 +14,8 @@ import ru.itmo.ipkn.starguard.core.index.RepoIndex;
 import ru.itmo.ipkn.starguard.core.index.RepoIndexBuilder;
 import ru.itmo.ipkn.starguard.core.index.RepoIndexLifecycle;
 import ru.itmo.ipkn.starguard.core.metrics.IndexMemoryMonitor;
+import ru.itmo.ipkn.starguard.core.metrics.MeteredGhArchiveBulkReader;
+import ru.itmo.ipkn.starguard.core.metrics.ParseMetrics;
 import ru.itmo.ipkn.starguard.core.service.RepoDataProvider;
 
 import java.time.Clock;
@@ -34,8 +36,8 @@ public class IndexConfig {
 
     @Bean
     public GhArchiveBulkReader ghArchiveBulkReader(
-            GhArchiveFeignClient feignClient, GhArchiveParser parser) {
-        return new HttpGhArchiveBulkReader(feignClient, parser);
+            GhArchiveFeignClient feignClient, GhArchiveParser parser, ParseMetrics parseMetrics) {
+        return new MeteredGhArchiveBulkReader(new HttpGhArchiveBulkReader(feignClient, parser), parseMetrics);
     }
 
     @Bean

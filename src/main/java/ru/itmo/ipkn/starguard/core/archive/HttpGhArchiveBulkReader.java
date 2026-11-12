@@ -50,13 +50,15 @@ public class HttpGhArchiveBulkReader implements GhArchiveBulkReader {
             }
 
             Instant hourEnd = hour.plusSeconds(3600);
+            long started = System.nanoTime();
             try (InputStream body = response.body().asInputStream()) {
-                int parseErrors = GhArchiveDumpReader.read(body, parser, filter, event -> {
+                ParseStats stats = GhArchiveDumpReader.readCounted(body, parser, filter, event -> {
                     if (!event.createdAt().isBefore(hour) && event.createdAt().isBefore(hourEnd)) {
                         sink.accept(event);
                     }
                 });
-                return new HourReadResult(hour, parseErrors, false, false);
+                return new HourReadResult(hour, stats.errors(), false, false,
+                        stats.lines(), stats.bytes(), System.nanoTime() - started);
             }
         } catch (IOException | RetryableException e) {
             throw new TransientArchiveException("I/O error while fetching " + file, e);

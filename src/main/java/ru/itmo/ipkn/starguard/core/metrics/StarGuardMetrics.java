@@ -26,6 +26,21 @@ public final class StarGuardMetrics {
     public static final String SCAN_LATENCY = "starguard.scan.latency";
     /** Сколько сканов идёт сейчас. */
     public static final String SCAN_ACTIVE = "starguard.scan.active";
+    /** Строк GH Archive прочитано; тег {@code source = index | scan}. {@code rate()} даёт строки в секунду. */
+    public static final String PARSE_LINES = "starguard.parse.lines";
+    /** Распакованных байт в этих строках; тег {@code source}. */
+    public static final String PARSE_BYTES = "starguard.parse.bytes";
+    /** Строк, которые не разобрались (битый JSON, слишком длинная строка); тег {@code source}. */
+    public static final String PARSE_ERRORS = "starguard.parse.errors";
+    /**
+     * Попыток чтения часовых дампов; теги {@code source} и {@code outcome}: {@code parsed}, {@code missing}
+     * (часа нет в архиве), {@code failed} (час пропущен), {@code error} (попытка упала, будет повтор).
+     */
+    public static final String PARSE_HOURS = "starguard.parse.hours";
+    /** Таймер чтения и разбора одного часового дампа; тег {@code source}. */
+    public static final String PARSE_HOUR_DURATION = "starguard.parse.hour.duration";
+    /** Скорость разбора последнего прочитанного часа, строк в секунду; тег {@code source}. */
+    public static final String PARSE_LINES_PER_SECOND = "starguard.parse.lines.per.second";
 
     private StarGuardMetrics() {
     }

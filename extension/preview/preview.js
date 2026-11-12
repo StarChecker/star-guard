@@ -5,7 +5,7 @@
   const THEME = window.StarGuardTheme;
   const S = window.STAR_GUARD_SAMPLES;
   const noop = () => {};
-  const actions = { onScan: noop, onRetry: noop, onOpenOptions: noop };
+  const actions = { onScan: noop, onRetry: noop, onOpenOptions: noop, onWindowChange: noop };
 
   function el(tag, attrs, text) {
     const node = document.createElement(tag);
@@ -68,6 +68,7 @@
     col.append(el('h2', {}, 'Остальные состояния'));
     const states = el('div', { className: 'grid' });
     card(states, { kind: 'not_indexed', hours: 6 });
+    card(states, { kind: 'out_of_window', hours: 24 });
     card(states, { kind: 'scanning', done: 2, total: 6, hours: 6 });
     card(states, { kind: 'loading', hours: 6 });
     card(states, { kind: 'error', code: 'API_UNREACHABLE', apiBase: 'http://localhost:8080' });

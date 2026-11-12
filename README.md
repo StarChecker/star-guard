@@ -204,8 +204,9 @@ curl "http://localhost:8080/api/v1/repos/demo/organic-app?hours=3"
 ### Расширение и Action
 
 - [extension/](extension/README.md) — расширение Chrome: значок у Star, карточка
-  в сайдбаре, график звёзд, точки в списках, скан по кнопке «Проверить»;
-  все состояния — в `extension/preview/index.html`;
+  в сайдбаре, окно анализа 1–24 ч (в карточке и настройках), график звёзд,
+  точки в списках, скан по кнопке «Проверить»; все состояния —
+  в `extension/preview/index.html`;
 - [action/](action/README.md) — GitHub Action: проверяет новые зависимости PR
   (npm, pip) и пишет комментарий с оценкой.
 

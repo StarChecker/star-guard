@@ -57,7 +57,14 @@
 }
 .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .head h2 { margin: 0; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-.head .window { color: var(--sg-muted); }
+.head .window { color: var(--sg-muted); display: inline-flex; align-items: center; gap: 4px; }
+.head select {
+  font: inherit; color: var(--sg-muted); background: transparent; cursor: pointer;
+  border: 1px solid transparent; border-radius: 6px; padding: 0 2px; margin: 0 -2px;
+}
+.head select:hover { border-color: var(--sg-border); background: var(--sg-bg-muted); }
+.head select:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: 1px; }
+.head-right { display: inline-flex; align-items: center; gap: 8px; }
 .logo { width: 16px; height: 16px; flex: none; }
 
 .summary { display: flex; gap: 12px; align-items: center; }
@@ -354,11 +361,25 @@ details.evidence[open] summary::before { content: '▾ '; }
     }
   }
 
-  function header(hours, floating, onClose) {
+  function windowPicker(hours, onWindowChange) {
+    const select = h('select', {
+      title: 'Окно анализа — сколько последних часов GH Archive учитывать',
+      'aria-label': 'Окно анализа, часов',
+      onchange: (event) => onWindowChange(Number(event.target.value)),
+    }, Array.from({ length: 24 }, (_, i) => i + 1).map((value) =>
+      h('option', { value: String(value), selected: value === hours }, String(value))));
+    return h('span', { class: 'window' }, 'за ', select, ' ч');
+  }
+
+  function header(hours, floating, actions) {
+    const onClose = actions && actions.onClose;
+    const picker = hours && actions && typeof actions.onWindowChange === 'function'
+      ? windowPicker(hours, actions.onWindowChange)
+      : h('span', { class: 'window' }, hours ? `за ${hours} ч` : '');
     return h('div', { class: 'head' },
       h('h2', {}, logo(), 'Star Guard'),
-      h('span', { class: 'window' }, hours ? `за ${hours} ч` : '',
-        floating && onClose ? h('button', { style: 'margin-left: 8px; padding: 0 6px', title: 'Скрыть', onclick: onClose }, '×') : null));
+      h('span', { class: 'head-right' }, picker,
+        floating && onClose ? h('button', { style: 'padding: 0 6px', title: 'Скрыть', onclick: onClose }, '×') : null));
   }
 
   function reportView(report) {
@@ -414,6 +435,11 @@ details.evidence[open] summary::before { content: '▾ '; }
         return [h('div', { class: 'state' },
           h('p', {}, 'Сервер прогревает индекс популярных репозиториев. Обычно это пара минут.'),
           h('button', { onclick: actions.onRetry }, 'Повторить'))];
+      case 'out_of_window':
+        return [h('div', { class: 'state' },
+          h('p', {}, `Окно ${state.hours} ч больше окна индекса сервера — готовой оценки за такой период нет.`),
+          h('p', {}, 'Можно проверить репозиторий напрямую по GH Archive — это займёт 1–3 минуты.'),
+          h('button', { class: 'primary', onclick: actions.onScan }, 'Проверить'))];
       case 'error':
       default:
         return [h('div', { class: 'state' },
@@ -433,7 +459,7 @@ details.evidence[open] summary::before { content: '▾ '; }
     const opts = options || {};
     const hours = state.kind === 'report' ? state.data.window.hours : state.hours;
     const card = h('div', { class: 'sg card' + (opts.floating ? ' floating' : '') },
-      header(hours, opts.floating, actions.onClose),
+      header(hours, opts.floating, actions),
       ...(state.kind === 'report' ? reportView(state.data) : stateView(state, actions)));
     shadowRoot.replaceChildren(h('style', {}, STYLES), card);
   }

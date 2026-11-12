@@ -18,7 +18,7 @@
   async function load() {
     const stored = await chrome.storage.sync.get(DEFAULTS);
     $('apiBase').value = stored.apiBase;
-    $('hours').value = String(stored.hours);
+    $('hours').value = String(Math.min(24, Math.max(1, Number(stored.hours) || DEFAULTS.hours)));
     $('listDots').checked = stored.listDots !== false;
   }
 
@@ -28,6 +28,11 @@
       apiBase = new URL($('apiBase').value.trim()).toString().replace(/\/+$/, '');
     } catch (ignored) {
       show('Некорректный адрес сервера', 'bad');
+      return false;
+    }
+    const hours = Number($('hours').value);
+    if (!Number.isInteger(hours) || hours < 1 || hours > 24) {
+      show('Окно анализа — целое число от 1 до 24 часов', 'bad');
       return false;
     }
     const pattern = originPattern(apiBase);
@@ -41,7 +46,7 @@
     }
     await chrome.storage.sync.set({
       apiBase,
-      hours: Number($('hours').value),
+      hours,
       listDots: $('listDots').checked,
     });
     show('Сохранено', 'ok');

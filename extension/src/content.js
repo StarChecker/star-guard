@@ -69,6 +69,8 @@
         return { kind: 'no_data', hours };
       case 'INDEX_NOT_READY':
         return { kind: 'index_not_ready', hours };
+      case 'INVALID_REQUEST':
+        return { kind: 'out_of_window', hours, message: response.message };
       default:
         return { kind: 'error', hours, code: response.code, message: response.message, apiBase: response.apiBase };
     }
@@ -158,8 +160,27 @@
     onScan: () => startScan(),
     onRetry: () => { send({ type: 'clearCache' }).then(() => loadRepo(currentRepo)); },
     onOpenOptions: () => window.open(chrome.runtime.getURL('options.html'), '_blank'),
+    onWindowChange: (hours) => changeWindow(hours),
     onClose: () => { floatingOpen = false; floatingClosed = true; renderRepo(); },
   };
+
+  // Смена окна из карточки: сразу применяем на странице и сохраняем в настройки,
+  // чтобы то же окно использовали popup и точки в списках.
+  async function changeWindow(value) {
+    const hours = Math.min(24, Math.max(1, Math.round(Number(value))));
+    if (!Number.isFinite(hours) || hours === settings.hours) return;
+    settings = { ...settings, hours };
+    listCache.clear();
+    document.querySelectorAll('[data-star-guard-dot]').forEach((dot) => dot.remove());
+    document.querySelectorAll('[data-star-guard-done]').forEach((link) => link.removeAttribute('data-star-guard-done'));
+    scheduleListDots();
+    if (currentRepo) loadRepo(currentRepo);
+    try {
+      await chrome.storage.sync.set({ hours });
+    } catch (ignored) {
+      // не удалось сохранить — окно всё равно применилось к текущей странице
+    }
+  }
 
   // ---------- встраивание на странице репозитория ----------
 
@@ -361,7 +382,13 @@
     chrome.storage.onChanged.addListener(async (changes, area) => {
       if (area !== 'sync') return;
       const fresh = await send({ type: 'settings' });
-      if (fresh.ok) settings = fresh.data;
+      if (!fresh.ok) return;
+      // Свою смену окна content script уже применил и перерисовал — не грузим повторно.
+      const changed = fresh.data.hours !== settings.hours
+        || fresh.data.listDots !== settings.listDots
+        || fresh.data.apiBase !== settings.apiBase;
+      settings = fresh.data;
+      if (!changed) return;
       listCache.clear();
       if (currentRepo) loadRepo(currentRepo);
     });

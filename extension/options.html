@@ -11,8 +11,9 @@
     p.lead { color: var(--fgColor-muted); margin: 0 0 24px; }
     label { display: block; font-weight: 600; margin: 16px 0 6px; }
     .hint { color: var(--fgColor-muted); font-size: 12px; margin-top: 4px; }
-    input[type=url], select { width: 100%; box-sizing: border-box; padding: 5px 12px; font: inherit; border-radius: 6px;
+    input[type=url], input[type=number] { width: 100%; box-sizing: border-box; padding: 5px 12px; font: inherit; border-radius: 6px;
            border: 1px solid var(--borderColor-default); background: var(--bgColor-muted); color: inherit; }
+    input[type=number] { width: 120px; }
     .row { display: flex; gap: 8px; align-items: center; margin-top: 16px; }
     button { font: inherit; font-weight: 500; padding: 5px 16px; border-radius: 6px; cursor: pointer;
              border: 1px solid var(--borderColor-default); background: var(--bgColor-muted); color: inherit; }
@@ -33,14 +34,11 @@
     <input id="apiBase" type="url" placeholder="http://localhost:8080" required>
     <div class="hint">Сервер Star Guard (бэкенд из этого репозитория). Для внешнего адреса браузер попросит разрешение.</div>
 
-    <label for="hours">Окно анализа</label>
-    <select id="hours">
-      <option value="3">3 часа</option>
-      <option value="6">6 часов</option>
-      <option value="12">12 часов</option>
-      <option value="24">24 часа</option>
-    </select>
-    <div class="hint">В режиме индекса сервер отвечает не больше чем за своё окно (по умолчанию 6 ч).</div>
+    <label for="hours">Окно анализа, часов</label>
+    <input id="hours" type="number" min="1" max="24" step="1" placeholder="6" required>
+    <div class="hint">Сколько последних часов GH Archive учитывать — от 1 до 24; по умолчанию 6.
+      Окно можно менять и прямо в карточке на странице репозитория. Сервер в режиме индекса
+      отвечает в пределах своего окна (по умолчанию 6 ч).</div>
 
     <label class="check"><input id="listDots" type="checkbox">
       <span>Показывать цветные точки рядом со звёздами в списках (Trending, поиск, звёзды пользователя)</span></label>

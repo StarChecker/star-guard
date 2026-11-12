@@ -17,7 +17,21 @@
     onScan: () => scan(),
     onRetry: () => send({ type: 'clearCache' }).then(load),
     onOpenOptions: () => chrome.runtime.openOptionsPage(),
+    onWindowChange: (hours) => changeWindow(hours),
   };
+
+  // Окно из заголовка карточки — сохраняем в те же настройки, что и страница настроек.
+  async function changeWindow(value) {
+    const next = Math.min(24, Math.max(1, Math.round(Number(value))));
+    if (!Number.isFinite(next) || next === hours) return;
+    hours = next;
+    try {
+      await chrome.storage.sync.set({ hours });
+    } catch (ignored) {
+      // не сохранилось — окно применится только в этом popup
+    }
+    load();
+  }
 
   function render(state) {
     UI.renderCard(shadow, state, actions);
@@ -28,6 +42,7 @@
     if (response.code === 'REPO_NOT_INDEXED') return { kind: 'not_indexed', hours };
     if (response.code === 'REPO_NOT_FOUND_IN_WINDOW') return { kind: 'no_data', hours };
     if (response.code === 'INDEX_NOT_READY') return { kind: 'index_not_ready', hours };
+    if (response.code === 'INVALID_REQUEST') return { kind: 'out_of_window', hours, message: response.message };
     return { kind: 'error', hours, code: response.code, message: response.message, apiBase: response.apiBase };
   }
 

@@ -98,7 +98,7 @@ class StarTrackerPostgresTest {
     }
 
     @Test
-    void rollsUpHoursAndComputesGlobalHourProfile() {
+    void backfillsRetainedSamplesWhenMaintenanceWasDelayed() {
         tracker.watch("R_a", new RepoRef("a", "a"), null, 0, 0);
         int stars = 0;
         for (int i = 0; i < 6; i++) {
@@ -106,7 +106,11 @@ class StarTrackerPostgresTest {
             graphql.counts.put("R_a", new int[]{stars, 0});
             tracker.pollOnce();
             clock.advance(Duration.ofHours(1));
+            if (i == 1) {
+                tracker.maintain(); // Initial rollup; then maintenance is absent for four hours.
+            }
         }
+        tracker.globalHourShare(); // Prime cache before the delayed rollup.
         tracker.maintain();
 
         double[] share = tracker.globalHourShare();

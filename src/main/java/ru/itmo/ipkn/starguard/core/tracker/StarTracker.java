@@ -179,7 +179,16 @@ public class StarTracker implements IntradaySource {
     public void maintain() {
         Instant now = clock.instant();
         Instant hour = now.truncatedTo(ChronoUnit.HOURS);
-        store.rollupHourly(hour.minus(Duration.ofHours(3)), hour);
+        Instant rawFrom = now.minus(properties.rawRetention());
+        // Resume from the last completed rollup after downtime; retain a two-hour overlap.
+        Instant rollupFrom = store.latestHourlyAt()
+                .map(last -> last.minus(Duration.ofHours(2)))
+                .orElse(rawFrom);
+        if (rollupFrom.isBefore(rawFrom)) {
+            rollupFrom = rawFrom;
+        }
+        store.rollupHourly(rollupFrom, hour);
+        globalProfile.invalidateAll();
         reviewRising();
         store.purge(now.minus(properties.rawRetention()), now.minus(properties.hourlyRetention()),
                 now.minus(properties.hourlyRetention()));

@@ -148,6 +148,11 @@ public class TrackerStore {
                 rs.getInt(4), (Integer) rs.getObject(5))).stream().findFirst();
     }
 
+    public Optional<Instant> latestHourlyAt() {
+        Timestamp latest = jdbc.queryForObject("select max(hour_at) from star_hourly", Timestamp.class);
+        return Optional.ofNullable(latest).map(Timestamp::toInstant);
+    }
+
     public int rollupHourly(Instant from, Instant to) {
         return jdbc.update("""
                 insert into star_hourly (repo_id, hour_at, stars, forks)

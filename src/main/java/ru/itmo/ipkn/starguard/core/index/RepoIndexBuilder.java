@@ -3,6 +3,7 @@ package ru.itmo.ipkn.starguard.core.index;
 import feign.RetryableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ru.itmo.ipkn.starguard.core.archive.EventFilter;
 import ru.itmo.ipkn.starguard.core.archive.GhArchiveBulkReader;
 import ru.itmo.ipkn.starguard.core.archive.GhArchiveParser;
 import ru.itmo.ipkn.starguard.core.archive.HourReadResult;
@@ -39,8 +40,10 @@ import java.util.function.Function;
 /**
  * Строит индекс в два прохода:
  * 1) считает звёзды по репозиториям за окно и выбирает топ-N; в том же проходе
- *    собирает почасовой {@link StarIndex} всех репозиториев для C4;
- * 2) повторно читает часы и агрегирует только выбранные репозитории.
+ *    собирает почасовой {@link StarIndex} всех репозиториев для C4. Проход лёгкий:
+ *    парсер разбирает только {@code WatchEvent}, остальные строки бросает после {@code type};
+ * 2) повторно читает часы и агрегирует только выбранные репозитории; строки
+ *    остальных парсер бросает после {@code repo.name}.
  * Фоновый процесс; запросы пользователей идут через готовый snapshot.
  */
 public class RepoIndexBuilder {
@@ -169,7 +172,8 @@ public class RepoIndexBuilder {
                     ? new StarIndex.Builder(starIndexProperties.maxPairsPerHour())
                     : null;
             try {
-                HourReadResult result = bulkReader.readHour(hour, event -> {
+                // Лёгкий проход: нужны только звёзды, остальные строки бросаются после "type".
+                HourReadResult result = bulkReader.readHour(hour, EventFilter.stars(), event -> {
                     if (event.type() == EventType.WATCH) {
                         local.merge(GhArchiveParser.normalizeFullName(event.repoFullName()),
                                 1, Integer::sum);
@@ -199,10 +203,12 @@ public class RepoIndexBuilder {
     private HourScan<Map<String, MutableHourAggregate>> phaseTwoHour(
             Instant hour, Set<String> candidates) {
         RuntimeException lastError = null;
+        // Строки репозиториев вне топа бросаются сразу после "repo.name", не трогая payload.
+        EventFilter filter = EventFilter.repos(candidates);
         for (int attempt = 0; attempt <= archiveProperties.retries(); attempt++) {
             Map<String, MutableHourAggregate> local = new HashMap<>();
             try {
-                HourReadResult result = bulkReader.readHour(hour, event -> {
+                HourReadResult result = bulkReader.readHour(hour, filter, event -> {
                     String key = GhArchiveParser.normalizeFullName(event.repoFullName());
                     if (candidates.contains(key)) {
                         local.computeIfAbsent(key,

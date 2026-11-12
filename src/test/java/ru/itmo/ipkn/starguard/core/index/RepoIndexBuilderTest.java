@@ -1,6 +1,7 @@
 package ru.itmo.ipkn.starguard.core.index;
 
 import org.junit.jupiter.api.Test;
+import ru.itmo.ipkn.starguard.core.archive.EventFilter;
 import ru.itmo.ipkn.starguard.core.archive.GhArchiveBulkReader;
 import ru.itmo.ipkn.starguard.core.archive.HourReadResult;
 import ru.itmo.ipkn.starguard.core.archive.TimeWindowCalculator;
@@ -15,6 +16,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -117,6 +119,30 @@ class RepoIndexBuilderTest {
                 .hasMessageContaining("No WatchEvent");
     }
 
+    @Test
+    void phaseOneReadsOnlyStarsAndPhaseTwoOnlyCandidates() {
+        FakeBulkReader reader = new FakeBulkReader();
+        reader.add(H07, event("1", EventType.WATCH, "a/one", 1, H07, 10));
+        reader.add(H07, event("2", EventType.WATCH, "a/one", 2, H07, 20));
+        reader.add(H08, event("3", EventType.WATCH, "b/two", 3, H08, 10));
+        reader.add(H09, event("4", EventType.PUSH, "a/one", 4, H09, 10));
+
+        builder(reader).build();
+
+        // Проход 2 начинается только после завершения всех часов прохода 1.
+        assertThat(reader.filters).hasSize(6);
+        List<EventFilter> phaseOne = List.copyOf(reader.filters.subList(0, 3));
+        List<EventFilter> phaseTwo = List.copyOf(reader.filters.subList(3, 6));
+        assertThat(phaseOne).allSatisfy(filter -> {
+            assertThat(filter.mayAccept(EventType.PUSH, null)).isFalse();
+            assertThat(filter.mayAccept(EventType.WATCH, null)).isTrue();
+        });
+        assertThat(phaseTwo).allSatisfy(filter -> {
+            assertThat(filter.mayAccept(EventType.PUSH, "A/One")).isTrue();
+            assertThat(filter.mayAccept(EventType.WATCH, "z/not-in-top")).isFalse();
+        });
+    }
+
     private static RepoIndexBuilder builder(GhArchiveBulkReader reader) {
         return new RepoIndexBuilder(
                 reader,
@@ -136,6 +162,13 @@ class RepoIndexBuilderTest {
 
         private final Map<Instant, List<GhEvent>> events = new HashMap<>();
         private final Set<Instant> missing = new HashSet<>();
+        private final List<EventFilter> filters = Collections.synchronizedList(new ArrayList<>());
+
+        @Override
+        public HourReadResult readHour(Instant hour, EventFilter filter, Consumer<GhEvent> sink) {
+            filters.add(filter);
+            return GhArchiveBulkReader.super.readHour(hour, filter, sink);
+        }
 
         private void add(Instant hour, GhEvent event) {
             events.computeIfAbsent(hour, ignored -> new ArrayList<>()).add(event);

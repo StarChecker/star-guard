@@ -55,7 +55,7 @@
 
 | ID | Задача | Владелец | Оценка | Dep | Статус | Ветка / PR |
 |----|--------|----------|--------|-----|--------|------------|
-| F3-1 | Streaming-парсер, lightweight pass 1, early repo filter | Dev 2 · `@Ar6yZxZ` | 3 | — | 🟡 | `feat/f3-1-streaming-parser` · [PR #13](https://github.com/StarChecker/star-guard/pull/13) на ревью |
+| F3-1 | Streaming-парсер, lightweight pass 1, early repo filter | Dev 2 · `@Ar6yZxZ` | 3 | — | 🟡 | `feat/f3-1-streaming-parser` · [PR #13](https://github.com/StarChecker/star-guard/pull/13) на ревью · [отчёт](f3-1-streaming-parser.md) |
 | F3-2 | Почасовые compact-агрегаты, инкрементальный сдвиг окна | Dev 2 · `@Ar6yZxZ` | 3 | F3-1 | 🟡 | `feat/f3-2-hourly-aggregates` · [PR #14](https://github.com/StarChecker/star-guard/pull/14) на ревью (поверх PR #13) |
 | F3-3 | Tiered-модель top-10k + detail-1k + long-tail, primitive arrays | Dev 3 · `@mpstrkv` | 4 | F3-2 | ⬜ | — |
 | F3-4 | Precomputed rank/totalStars, read-only minute series, дедуп | Dev 3 · `@mpstrkv` | 2 | F3-3 | ⬜ | — |

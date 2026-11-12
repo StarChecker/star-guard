@@ -78,14 +78,6 @@ h1 .neon { filter: drop-shadow(0 0 18px rgba(124, 58, 237, .25)); }
 .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(47, 107, 255, .14); }
 .btn.primary { color: #fff; border: 0; background: var(--neon); box-shadow: 0 10px 30px rgba(124, 58, 237, .35); }
 .btn.primary:hover { box-shadow: 0 14px 36px rgba(124, 58, 237, .45); }
-.server-state { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 15px; color: var(--muted); }
-.server-state[hidden] { display: none; }
-.server-state .led { width: 10px; height: 10px; border-radius: 50%; background: #c9cde0; flex: none; }
-.server-state.up .led { background: var(--green); box-shadow: 0 0 10px var(--green); }
-.server-state.down .led { background: var(--pink); box-shadow: 0 0 10px var(--pink); }
-.server-state.local .led { background: var(--star); }
-.server-state.up b { color: #007a47; } .server-state.down b { color: #d11468; }
-.server-state small { font: 500 12px/1 var(--mono); color: #8a8da6; }
 .mobile-note { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; border-radius: 16px; background: var(--panel);
   border: 2px dashed #c9b8ff; }
 .mobile-note[hidden] { display: none; }

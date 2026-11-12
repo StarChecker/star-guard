@@ -5,6 +5,7 @@ import ru.itmo.ipkn.starguard.core.archive.EventFilter;
 import ru.itmo.ipkn.starguard.core.archive.GhArchiveBulkReader;
 import ru.itmo.ipkn.starguard.core.archive.HourReadResult;
 import ru.itmo.ipkn.starguard.core.archive.TimeWindowCalculator;
+import ru.itmo.ipkn.starguard.core.archive.TransientArchiveException;
 import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
 import ru.itmo.ipkn.starguard.core.config.RepoIndexProperties;
 import ru.itmo.ipkn.starguard.core.domain.ActorActivity;
@@ -14,6 +15,7 @@ import ru.itmo.ipkn.starguard.core.domain.GhEvent;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -34,6 +36,7 @@ class RepoIndexBuilderTest {
     private static final Instant H07 = Instant.parse("2026-11-10T07:00:00Z");
     private static final Instant H08 = Instant.parse("2026-11-10T08:00:00Z");
     private static final Instant H09 = Instant.parse("2026-11-10T09:00:00Z");
+    private static final Instant H10 = Instant.parse("2026-11-10T10:00:00Z");
 
     private static final ArchiveProperties ARCHIVE = new ArchiveProperties(
             "https://example.test", ArchiveProperties.Mode.HTTP,
@@ -120,36 +123,90 @@ class RepoIndexBuilderTest {
     }
 
     @Test
-    void phaseOneReadsOnlyStarsAndPhaseTwoOnlyCandidates() {
+    void readsEachHourOnceInSinglePass() {
         FakeBulkReader reader = new FakeBulkReader();
         reader.add(H07, event("1", EventType.WATCH, "a/one", 1, H07, 10));
-        reader.add(H07, event("2", EventType.WATCH, "a/one", 2, H07, 20));
-        reader.add(H08, event("3", EventType.WATCH, "b/two", 3, H08, 10));
-        reader.add(H09, event("4", EventType.PUSH, "a/one", 4, H09, 10));
+        reader.add(H08, event("2", EventType.WATCH, "b/two", 2, H08, 10));
+        reader.add(H09, event("3", EventType.PUSH, "a/one", 3, H09, 10));
 
         builder(reader).build();
 
-        // Проход 2 начинается только после завершения всех часов прохода 1.
-        assertThat(reader.filters).hasSize(6);
-        List<EventFilter> phaseOne = List.copyOf(reader.filters.subList(0, 3));
-        List<EventFilter> phaseTwo = List.copyOf(reader.filters.subList(3, 6));
-        assertThat(phaseOne).allSatisfy(filter -> {
-            assertThat(filter.mayAccept(EventType.PUSH, null)).isFalse();
-            assertThat(filter.mayAccept(EventType.WATCH, null)).isTrue();
-        });
-        assertThat(phaseTwo).allSatisfy(filter -> {
-            assertThat(filter.mayAccept(EventType.PUSH, "A/One")).isTrue();
-            assertThat(filter.mayAccept(EventType.WATCH, "z/not-in-top")).isFalse();
-        });
+        assertThat(reader.reads).containsExactlyInAnyOrder(H07, H08, H09);
+        assertThat(reader.filters).allSatisfy(filter ->
+                assertThat(filter.mayAccept(EventType.PUSH, "z/any")).isTrue());
+    }
+
+    @Test
+    void slidingWindowParsesOnlyNewHourAndMatchesFullRebuild() {
+        MutableClock clock = new MutableClock(Instant.parse("2026-11-10T12:00:00Z"));
+        FakeBulkReader reader = new FakeBulkReader();
+        reader.add(H07, event("1", EventType.WATCH, "a/one", 1, H07, 10));
+        reader.add(H07, event("2", EventType.WATCH, "a/one", 2, H07, 20));
+        reader.add(H07, event("3", EventType.WATCH, "b/three", 3, H07, 30));
+        reader.add(H08, event("4", EventType.WATCH, "b/three", 4, H08, 10));
+        // z/late в первом окне вне топа, но уже активен — эти часы ему понадобятся позже.
+        reader.add(H08, event("5", EventType.PUSH, "z/late", 5, H08, 20));
+        reader.add(H09, event("6", EventType.ISSUES, "z/late", 6, H09, 5));
+        reader.add(H09, event("7", EventType.WATCH, "a/one", 7, H09, 40));
+        reader.add(H10, event("8", EventType.WATCH, "z/late", 8, H10, 1));
+        reader.add(H10, event("9", EventType.WATCH, "z/late", 9, H10, 2));
+        reader.add(H10, event("10", EventType.WATCH, "z/late", 10, H10, 3));
+        RepoIndexBuilder builder = builder(reader, clock);
+
+        RepoIndexSnapshot first = builder.build();
+        assertThat(first.repos()).containsOnlyKeys("a/one", "b/three");
+
+        clock.set(Instant.parse("2026-11-10T13:00:00Z"));
+        reader.reads.clear();
+        RepoIndexSnapshot slid = builder.build();
+
+        assertThat(reader.reads).containsExactly(H10);
+        assertThat(builder.retainedHours()).containsExactlyInAnyOrder(H08, H09, H10);
+        assertThat(slid.repos()).containsOnlyKeys("z/late", "a/one");
+        // Новичок топа получил полные данные за часы, которые разбирались до его взлёта.
+        assertThat(slid.find("z/late").orElseThrow().hours())
+                .extracting(hour -> hour.counts().total())
+                .containsExactly(1, 1, 3);
+        assertThat(IndexSnapshots.describe(slid))
+                .isEqualTo(IndexSnapshots.describe(builder(reader, clock).build()));
+    }
+
+    @Test
+    void retriesUnavailableHoursOnNextBuild() {
+        FakeBulkReader reader = new FakeBulkReader();
+        reader.add(H07, event("1", EventType.WATCH, "a/one", 1, H07, 10));
+        reader.add(H08, event("2", EventType.WATCH, "a/one", 2, H08, 10));
+        reader.add(H09, event("3", EventType.WATCH, "b/three", 3, H09, 10));
+        reader.missing(H08);
+        reader.failing(H09);
+        RepoIndexBuilder builder = builder(reader);
+
+        RepoIndexSnapshot first = builder.build();
+        assertThat(first.missingHours()).containsExactly(H08, H09);
+        assertThat(builder.retainedHours()).containsExactly(H07);
+
+        reader.missing.clear();
+        reader.failing.clear();
+        reader.reads.clear();
+        RepoIndexSnapshot second = builder.build();
+
+        assertThat(reader.reads).containsExactlyInAnyOrder(H08, H09);
+        assertThat(second.missingHours()).isEmpty();
+        assertThat(RepoIndexSnapshot.totalStars(second.find("a/one").orElseThrow())).isEqualTo(2);
+        assertThat(second.repos()).containsKey("b/three");
     }
 
     private static RepoIndexBuilder builder(GhArchiveBulkReader reader) {
+        return builder(reader, CLOCK);
+    }
+
+    private static RepoIndexBuilder builder(GhArchiveBulkReader reader, Clock clock) {
         return new RepoIndexBuilder(
                 reader,
-                new TimeWindowCalculator(CLOCK, ARCHIVE),
+                new TimeWindowCalculator(clock, ARCHIVE),
                 ARCHIVE,
                 INDEX,
-                CLOCK);
+                clock);
     }
 
     private static GhEvent event(
@@ -162,6 +219,8 @@ class RepoIndexBuilderTest {
 
         private final Map<Instant, List<GhEvent>> events = new HashMap<>();
         private final Set<Instant> missing = new HashSet<>();
+        private final Set<Instant> failing = new HashSet<>();
+        private final List<Instant> reads = Collections.synchronizedList(new ArrayList<>());
         private final List<EventFilter> filters = Collections.synchronizedList(new ArrayList<>());
 
         @Override
@@ -178,13 +237,49 @@ class RepoIndexBuilderTest {
             missing.add(hour);
         }
 
+        private void failing(Instant hour) {
+            failing.add(hour);
+        }
+
         @Override
         public HourReadResult readHour(Instant hour, Consumer<GhEvent> sink) {
+            reads.add(hour);
+            if (failing.contains(hour)) {
+                throw new TransientArchiveException("GH Archive returned status 503");
+            }
             if (missing.contains(hour)) {
                 return new HourReadResult(hour, 0, true, false);
             }
             events.getOrDefault(hour, List.of()).forEach(sink);
             return new HourReadResult(hour, 0, false, false);
+        }
+    }
+
+    private static final class MutableClock extends Clock {
+
+        private volatile Instant now;
+
+        private MutableClock(Instant now) {
+            this.now = now;
+        }
+
+        private void set(Instant now) {
+            this.now = now;
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return now;
         }
     }
 }

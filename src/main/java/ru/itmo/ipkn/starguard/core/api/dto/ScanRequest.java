@@ -10,6 +10,9 @@ import jakarta.validation.constraints.Pattern;
 public record ScanRequest(
         @Schema(example = "spring-projects") @NotNull @Pattern(regexp = "^[A-Za-z0-9_.-]{1,100}$") String owner,
         @Schema(example = "spring-boot") @NotNull @Pattern(regexp = "^[A-Za-z0-9_.-]{1,100}$") String name,
-        @Schema(example = "6") @Min(1) @Max(24) Integer hours
+        @Schema(example = "6") @Min(1) @Max(24) Integer hours,
+        @Schema(description = "github — история GitHub (нужен токен), archive — дампы GH Archive; по умолчанию выбирается сам",
+                allowableValues = {"github", "archive"})
+        @Pattern(regexp = "^(github|archive)$") String source
 ) {
 }

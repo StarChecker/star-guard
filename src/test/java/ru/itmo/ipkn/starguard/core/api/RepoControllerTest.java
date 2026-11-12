@@ -43,7 +43,7 @@ class RepoControllerTest {
 
     @Test
     void returnsSnakeCaseReport() throws Exception {
-        when(reportService.getReport(any(), any(), any())).thenReturn(sampleReport());
+        when(reportService.getReport(any(), any(), any(), any())).thenReturn(sampleReport());
 
         mockMvc.perform(get("/api/v1/repos/demo/star-guard"))
                 .andExpect(status().isOk())
@@ -62,7 +62,7 @@ class RepoControllerTest {
     @Test
     void returns404WhenRepoHasNoEventsInWindow() throws Exception {
         RepoRef repo = new RepoRef("demo", "star-guard");
-        when(reportService.getReport(any(), any(), any()))
+        when(reportService.getReport(any(), any(), any(), any()))
                 .thenThrow(new RepoNotFoundException(repo, window()));
 
         mockMvc.perform(get("/api/v1/repos/demo/star-guard"))
@@ -73,7 +73,7 @@ class RepoControllerTest {
     @Test
     void returns404WhenRepoIsNotIndexed() throws Exception {
         RepoRef repo = new RepoRef("demo", "star-guard");
-        when(reportService.getReport(any(), any(), any()))
+        when(reportService.getReport(any(), any(), any(), any()))
                 .thenThrow(new RepoNotIndexedException(repo, window()));
 
         mockMvc.perform(get("/api/v1/repos/demo/star-guard"))
@@ -83,7 +83,7 @@ class RepoControllerTest {
 
     @Test
     void returns503WhenIndexIsNotReady() throws Exception {
-        when(reportService.getReport(any(), any(), any()))
+        when(reportService.getReport(any(), any(), any(), any()))
                 .thenThrow(new IndexNotReadyException());
 
         mockMvc.perform(get("/api/v1/repos/demo/star-guard"))

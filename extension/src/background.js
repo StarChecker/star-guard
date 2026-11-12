@@ -147,12 +147,23 @@ async function handle(message) {
       if (repos.length === 0) return { ok: true, data: {} };
       return batch(repos.slice(0, 200), hours);
     }
+    case 'preview': {
+      if (!REPO_RE.test(message.repo || '')) return { ok: false, code: 'BAD_REPO' };
+      const [owner, name] = message.repo.split('/');
+      return call(`/api/v1/preview/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`);
+    }
     case 'scanStart':
       if (!REPO_RE.test(message.repo || '')) return { ok: false, code: 'BAD_REPO' };
       return scanStart(message.repo, hours);
     case 'scanStatus':
       if (!SCAN_ID_RE.test(message.id || '')) return { ok: false, code: 'BAD_SCAN_ID' };
       return scanStatus(message.id);
+    case 'top': {
+      // живые репозитории индекса с оценкой — для popup на страницах без репозитория
+      const limit = Number.isInteger(message.limit) ? Math.min(50, Math.max(1, message.limit)) : 15;
+      const level = ['low', 'medium', 'high', 'critical'].includes(message.maxLevel) ? `&max_level=${message.maxLevel}` : '';
+      return call(`/api/v1/index/repos?limit=${limit}&existing_only=true&with_score=true${level}`);
+    }
     case 'ping': {
       // 200 или 503 (индекс прогревается) — сервер жив; иначе — недоступен
       const result = await call('/api/v1/index/repos?limit=1');

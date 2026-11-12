@@ -58,22 +58,22 @@
   <div class="frame">
     <p class="eyebrow">Sequence · Star Guard</p>
     <h1>Путь запроса отчёта</h1>
-    <p class="note">Запрос не скачивает дампы: подокно собирается из почасовых агрегатов индекса. Обогащение через GitHub срабатывает только для топ-N репозиториев индекса и кэширует ответы на 24 часа. Вне индекса ответ 404 REPO_NOT_INDEXED, до первой сборки 503 INDEX_NOT_READY.</p>
+    <p class="note">Режим GitHub: сервис отчёта берёт дневную историю звёзд и активность из GithubHistoryService (REST/GraphQL, кэш 5 минут). Если включён app.tracker.enabled, Star Tracker добавляет внутридневные точки из собственных снимков PostgreSQL. Итоговый snapshot передаётся в GithubScoringEngine, который возвращает score с explain по 6 проверкам.</p>
     <div class="diagram-container">
       <svg viewBox="0 0 1080 656" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="star-guard-request-title star-guard-request-desc">
         <title id="star-guard-request-title">Путь запроса отчёта</title>
-        <desc id="star-guard-request-desc">Последовательность обработки GET /api/v1/repos/{owner}/{name}: сервис берёт агрегаты из индекса, при включённом app.github.enabled обогащает акторов датой аккаунта и передаёт snapshot в движок, который возвращает score с explain.</desc>
+        <desc id="star-guard-request-desc">Последовательность обработки GET /api/v1/repos/{owner}/{name} в режиме GitHub: сервис отчёта запрашивает дневную историю и активность у GithubHistoryService, при включённом трекере добавляет внутридневные точки из Star Tracker и передаёт snapshot в GithubScoringEngine, который возвращает score с explain.</desc>
         <defs>
           <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#46627f"/></marker>
           <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1859b0"/></marker>
           <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#16707f"/></marker>
-          
+
         </defs>
         <rect width="100%" height="100%" fill="#f3f7fb"/>
 <rect x="296" y="276" width="380" height="128" rx="4" fill="rgba(27,42,58,0.02)" stroke="rgba(27,42,58,0.22)" stroke-width="1"/>
 <rect x="296" y="276" width="40" height="16" rx="2" fill="#f3f7fb" stroke="rgba(27,42,58,0.22)" stroke-width="1"/>
 <text x="316" y="288" fill="#46627f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.12em">OPT</text>
-<text x="348" y="288" fill="#46627f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.04em">[app.github.enabled, rank &lt;= top-n]</text>
+<text x="348" y="288" fill="#46627f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.04em">[app.tracker.enabled]</text>
 <line x1="120" y1="96" x2="120" y2="568" stroke="rgba(27,42,58,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
 <line x1="330" y1="96" x2="330" y2="568" stroke="rgba(27,42,58,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
 <line x1="540" y1="96" x2="540" y2="568" stroke="rgba(27,42,58,0.20)" stroke-width="1" stroke-dasharray="3,3"/>
@@ -98,21 +98,21 @@
 <rect x="187.0" y="124" width="76" height="12" rx="2" fill="#f3f7fb"/>
 <text x="225.0" y="133" fill="#16707f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">GET ?HOURS=6</text>
 <rect x="397.0" y="164" width="76" height="12" rx="2" fill="#f3f7fb"/>
-<text x="435.0" y="173" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">LOAD(REPO,H)</text>
+<text x="435.0" y="173" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">HISTORY(REPO)</text>
 <rect x="794.0" y="208" width="48" height="12" rx="2" fill="#f3f7fb"/>
-<text x="818.0" y="217" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">COMPOSE</text>
+<text x="818.0" y="217" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">GH API</text>
 <rect x="401.0" y="236" width="68" height="12" rx="2" fill="#f3f7fb"/>
-<text x="435.0" y="245" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">DATA + RANK</text>
+<text x="435.0" y="245" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">HISTORY+ACT</text>
 <rect x="401.0" y="300" width="68" height="12" rx="2" fill="#f3f7fb"/>
-<text x="435.0" y="309" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">STAR ACTORS</text>
+<text x="435.0" y="309" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">INTRADAY</text>
 <rect x="584.0" y="344" width="64" height="12" rx="2" fill="#f3f7fb"/>
-<text x="616.0" y="353" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">GET /USERS</text>
+<text x="616.0" y="353" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">READ DB</text>
 <rect x="403.0" y="364" width="64" height="12" rx="2" fill="#f3f7fb"/>
-<text x="435.0" y="373" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">CREATED_AT</text>
+<text x="435.0" y="373" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">POINTS</text>
 <rect x="401.0" y="412" width="68" height="12" rx="2" fill="#f3f7fb"/>
 <text x="435.0" y="421" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">SCORE(SNAP)</text>
-<rect x="994.0" y="456" width="36" height="12" rx="2" fill="#f3f7fb"/>
-<text x="1012.0" y="465" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">C1-C5</text>
+<rect x="984.0" y="456" width="56" height="12" rx="2" fill="#f3f7fb"/>
+<text x="1012.0" y="465" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">6 CHECKS</text>
 <rect x="395.0" y="476" width="80" height="12" rx="2" fill="#f3f7fb"/>
 <text x="435.0" y="485" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">SCORE+EXPLAIN</text>
 <rect x="199.0" y="516" width="52" height="12" rx="2" fill="#f3f7fb"/>
@@ -127,16 +127,16 @@
 <text x="330.0" y="80.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">RepoReportService</text>
 <rect x="460" y="40" width="160" height="56" rx="6" fill="#f3f7fb"/>
 <rect x="460" y="40" width="160" height="56" rx="6" fill="rgba(27,42,58,0.02)" stroke="rgba(27,42,58,0.20)" stroke-width="1" stroke-dasharray="4,3"/>
-<text x="540.0" y="65.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Обогащение</text>
-<text x="540.0" y="80.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">AccountAgeEnricher</text>
+<text x="540.0" y="65.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Star Tracker</text>
+<text x="540.0" y="80.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">intraday · опционально</text>
 <rect x="670" y="40" width="160" height="56" rx="6" fill="#f3f7fb"/>
 <rect x="670" y="40" width="160" height="56" rx="6" fill="rgba(27,42,58,0.05)" stroke="#46627f" stroke-width="1"/>
-<text x="750.0" y="65.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Индекс</text>
-<text x="750.0" y="80.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">IndexRepoDataProvider</text>
+<text x="750.0" y="65.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">История GitHub</text>
+<text x="750.0" y="80.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">GithubHistoryService</text>
 <rect x="870" y="40" width="160" height="56" rx="6" fill="#f3f7fb"/>
 <rect x="870" y="40" width="160" height="56" rx="6" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
 <text x="950.0" y="65.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Движок score</text>
-<text x="950.0" y="80.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">DefaultScoringEngine</text>
+<text x="950.0" y="80.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">GithubScoringEngine</text>
 <line x1="40" y1="592" x2="1040" y2="592" stroke="rgba(27,42,58,0.10)" stroke-width="0.8"/>
 <text x="40" y="608" fill="#46627f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.18em">ЛЕГЕНДА</text>
 <line x1="40" y1="629" x2="68" y2="629" stroke="#16707f" stroke-width="1.2" marker-end="url(#arrow-link)"/>

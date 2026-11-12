@@ -58,16 +58,15 @@
   <div class="frame">
     <p class="eyebrow">Architecture · Star Guard</p>
     <h1>Star Guard: обзор архитектуры</h1>
-    <p class="note">Отчёт по репозиторию собирается из предвычисленного индекса топ-1000. Если индекс выключен или включён fixture-режим, события читаются напрямую из GH Archive или из фикстур. Даты аккаунтов из GitHub REST подтягиваются, только когда задано app.github.enabled.</p>
+    <p class="note">Основной путь — режим GitHub: RepoReportService через GithubHistoryService берёт дневную историю звёзд и активность по любому репозиторию из GitHub REST/GraphQL, а Star Tracker добавляет внутридневную детализацию из собственных снимков в PostgreSQL. Пул подозрительных аккаунтов — отдельный источник сигнала для score, собирается из форков отслеживаемых репозиториев. Индекс топ-1000 и GH Archive остаются резервным путём (app.report.source=index). GitHub закрыл список звёзд репозитория (/stargazers) 2026-06-30 — поэтому прежняя проверка пересечения звёзд по пользователям (C4) в режиме GitHub недоступна.</p>
     <div class="diagram-container">
       <svg viewBox="0 0 1080 540" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="star-guard-overview-title star-guard-overview-desc">
         <title id="star-guard-overview-title">Star Guard: обзор архитектуры</title>
-        <desc id="star-guard-overview-desc">Архитектура Star Guard: клиент обращается к API, отчёт строится из индекса топ-1000 или напрямую из GH Archive, акторы при желании обогащаются через GitHub REST, а ScoringEngine считает итоговый score по проверкам C1-C5.</desc>
+        <desc id="star-guard-overview-desc">Архитектура Star Guard в режиме GitHub: клиент обращается к API, GithubHistoryService читает дневную историю звёзд и активность из GitHub REST/GraphQL, Star Tracker на PostgreSQL добавляет внутридневные снимки, пул аккаунтов усиливает score, а индекс и GH Archive остаются резервным путём.</desc>
         <defs>
           <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#46627f"/></marker>
           <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1859b0"/></marker>
           <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#16707f"/></marker>
-          
         </defs>
         <rect width="100%" height="100%" fill="#f3f7fb"/>
 <rect x="208" y="64" width="480" height="392" rx="8" fill="rgba(27,42,58,0.02)" stroke="rgba(27,42,58,0.10)" stroke-width="0.8"/>
@@ -78,34 +77,37 @@
 <text x="940.0" y="77" fill="#526d89" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.14em">ВНЕШНИЕ ИСТОЧНИКИ</text>
 <path d="M 168,244 H 232" fill="none" stroke="#16707f" stroke-width="1.2" marker-end="url(#arrow-link)"/>
 <path d="M 232,268 H 168" fill="none" stroke="#46627f" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
-<path d="M 352,224 V 136 Q 352,128 360,128 H 488" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 352,224 V 136 Q 352,128 360,128 H 488" fill="none" stroke="#1859b0" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
 <path d="M 392,248 H 488" fill="none" stroke="#46627f" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
 <path d="M 392,272 H 448 Q 456,272 456,280 V 392 Q 456,400 464,400 H 488" fill="none" stroke="#46627f" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
 <path d="M 312,288 V 368" fill="none" stroke="#1859b0" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
 <path d="M 664,128 H 716 Q 724,128 724,136 V 168 Q 724,176 732,176 H 860" fill="none" stroke="#16707f" stroke-width="1.2" marker-end="url(#arrow-link)"/>
 <path d="M 664,240 H 740 Q 748,240 748,232 V 216 Q 748,208 756,208 H 860" fill="none" stroke="#16707f" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+<path d="M 540,288 V 368" fill="none" stroke="#46627f" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
 <path d="M 664,272 H 764 Q 772,272 772,280 V 312 Q 772,320 780,320 H 860" fill="none" stroke="#46627f" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
-<path d="M 664,400 H 860" fill="none" stroke="#16707f" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow-link)"/>
+<path d="M 664,400 H 860" fill="none" stroke="#46627f" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
 <rect x="174.0" y="224" width="52" height="12" rx="2" fill="#f3f7fb"/>
 <text x="200.0" y="233" fill="#16707f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">HTTP GET</text>
 <rect x="184.0" y="276" width="32" height="12" rx="2" fill="#f3f7fb"/>
 <text x="200.0" y="285" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">JSON</text>
-<rect x="312.0" y="170" width="32" height="12" rx="2" fill="#f3f7fb"/>
-<text x="328.0" y="179" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">READ</text>
+<rect x="312.0" y="170" width="52" height="12" rx="2" fill="#f3f7fb"/>
+<text x="338.0" y="179" fill="#1859b0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">GITHUB-FIRST</text>
 <rect x="410.0" y="228" width="60" height="12" rx="2" fill="#f3f7fb"/>
-<text x="440.0" y="237" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">INDEX OFF</text>
+<text x="440.0" y="237" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">SOURCE=INDEX</text>
 <rect x="464.0" y="324" width="36" height="12" rx="2" fill="#f3f7fb"/>
 <text x="482.0" y="333" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">TOP-N</text>
 <rect x="252.0" y="322" width="52" height="12" rx="2" fill="#f3f7fb"/>
 <text x="278.0" y="331" fill="#1859b0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">SNAPSHOT</text>
-<rect x="766.0" y="156" width="60" height="12" rx="2" fill="#f3f7fb"/>
-<text x="796.0" y="165" fill="#16707f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">2 ПРОХОДА</text>
+<rect x="766.0" y="156" width="64" height="12" rx="2" fill="#f3f7fb"/>
+<text x="798.0" y="165" fill="#16707f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">ПО ЗАПРОСУ</text>
 <rect x="776.0" y="188" width="64" height="12" rx="2" fill="#f3f7fb"/>
-<text x="808.0" y="197" fill="#16707f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">ПО ЗАПРОСУ</text>
+<text x="808.0" y="197" fill="#16707f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">ОПРОС 5 МИН</text>
+<rect x="500.0" y="320" width="76" height="12" rx="2" fill="#f3f7fb"/>
+<text x="538.0" y="329" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">ФОРКЕРЫ</text>
 <rect x="796.0" y="300" width="48" height="12" rx="2" fill="#f3f7fb"/>
-<text x="820.0" y="309" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">FIXTURE</text>
+<text x="820.0" y="309" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">GH ARCHIVE</text>
 <rect x="730.0" y="380" width="64" height="12" rx="2" fill="#f3f7fb"/>
-<text x="762.0" y="389" fill="#16707f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">GET /USERS</text>
+<text x="762.0" y="389" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">ПРОФИЛЬ</text>
 <rect x="40" y="224" width="128" height="64" rx="6" fill="#f3f7fb"/>
 <rect x="40" y="224" width="128" height="64" rx="6" fill="rgba(70,98,127,0.10)" stroke="#526d89" stroke-width="1"/>
 <rect x="48" y="230" width="32" height="12" rx="2" fill="transparent" stroke="#526d89" stroke-opacity="0.5" stroke-width="0.8"/>
@@ -122,44 +124,44 @@
 <rect x="232" y="368" width="160" height="64" rx="6" fill="rgba(24,89,176,0.08)" stroke="#1859b0" stroke-width="1"/>
 <rect x="240" y="374" width="32" height="12" rx="2" fill="transparent" stroke="#1859b0" stroke-opacity="0.5" stroke-width="0.8"/>
 <text x="256.0" y="383" fill="#1859b0" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">CORE</text>
-<text x="312.0" y="401.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">ScoringEngine</text>
-<text x="312.0" y="416.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">C1-C5 · веса · explain</text>
+<text x="312.0" y="401.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">GithubScoringEngine</text>
+<text x="312.0" y="416.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">6 проверок · веса · explain</text>
 <rect x="488" y="96" width="176" height="64" rx="6" fill="#f3f7fb"/>
-<rect x="488" y="96" width="176" height="64" rx="6" fill="rgba(27,42,58,0.05)" stroke="#46627f" stroke-width="1"/>
-<rect x="496" y="102" width="28" height="12" rx="2" fill="transparent" stroke="#46627f" stroke-opacity="0.5" stroke-width="0.8"/>
-<text x="510.0" y="111" fill="#46627f" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">MEM</text>
-<text x="576.0" y="129.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Индекс топ-1000</text>
-<text x="576.0" y="144.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">RepoIndex · окно 6 ч</text>
+<rect x="488" y="96" width="176" height="64" rx="6" fill="rgba(24,89,176,0.08)" stroke="#1859b0" stroke-width="1"/>
+<rect x="496" y="102" width="36" height="12" rx="2" fill="transparent" stroke="#1859b0" stroke-opacity="0.5" stroke-width="0.8"/>
+<text x="514.0" y="111" fill="#1859b0" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">CORE</text>
+<text x="576.0" y="129.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">GithubHistoryService</text>
+<text x="576.0" y="144.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">дневная история · активность</text>
 <rect x="488" y="224" width="176" height="64" rx="6" fill="#f3f7fb"/>
-<rect x="488" y="224" width="176" height="64" rx="6" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
-<rect x="496" y="230" width="32" height="12" rx="2" fill="transparent" stroke="#1b2a3a" stroke-opacity="0.5" stroke-width="0.8"/>
-<text x="512.0" y="239" fill="#1b2a3a" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">HTTP</text>
-<text x="576.0" y="257.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Клиент GH Archive</text>
-<text x="576.0" y="272.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">Feign · gzip stream</text>
+<rect x="488" y="224" width="176" height="64" rx="6" fill="rgba(27,42,58,0.05)" stroke="#46627f" stroke-width="1"/>
+<rect x="496" y="230" width="28" height="12" rx="2" fill="transparent" stroke="#46627f" stroke-opacity="0.5" stroke-width="0.8"/>
+<text x="510.0" y="239" fill="#46627f" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">MEM</text>
+<text x="576.0" y="257.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Star Tracker</text>
+<text x="576.0" y="272.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">PostgreSQL · 5 мин опрос</text>
 <rect x="488" y="368" width="176" height="64" rx="6" fill="#f3f7fb"/>
 <rect x="488" y="368" width="176" height="64" rx="6" fill="rgba(27,42,58,0.02)" stroke="rgba(27,42,58,0.20)" stroke-width="1" stroke-dasharray="4,3"/>
 <rect x="496" y="374" width="28" height="12" rx="2" fill="transparent" stroke="#526d89" stroke-opacity="0.5" stroke-width="0.8"/>
 <text x="510.0" y="383" fill="#526d89" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">OPT</text>
-<text x="576.0" y="401.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Обогащение аккаунтов</text>
-<text x="576.0" y="416.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">app.github.enabled</text>
+<text x="576.0" y="401.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Пул аккаунтов</text>
+<text x="576.0" y="416.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">app.account-pool.enabled</text>
 <rect x="860" y="160" width="160" height="64" rx="6" fill="#f3f7fb"/>
 <rect x="860" y="160" width="160" height="64" rx="6" fill="rgba(27,42,58,0.03)" stroke="rgba(27,42,58,0.30)" stroke-width="1"/>
 <rect x="868" y="166" width="28" height="12" rx="2" fill="transparent" stroke="#526d89" stroke-opacity="0.5" stroke-width="0.8"/>
 <text x="882.0" y="175" fill="#526d89" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
-<text x="940.0" y="193.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">GH Archive</text>
-<text x="940.0" y="208.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">data.gharchive.org</text>
+<text x="940.0" y="193.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">GitHub REST/GraphQL</text>
+<text x="940.0" y="208.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">stargazers/history · nodes</text>
 <rect x="860" y="288" width="160" height="64" rx="6" fill="#f3f7fb"/>
-<rect x="860" y="288" width="160" height="64" rx="6" fill="rgba(27,42,58,0.05)" stroke="#46627f" stroke-width="1"/>
-<rect x="868" y="294" width="32" height="12" rx="2" fill="transparent" stroke="#46627f" stroke-opacity="0.5" stroke-width="0.8"/>
-<text x="884.0" y="303" fill="#46627f" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">FILE</text>
-<text x="940.0" y="321.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Фикстуры</text>
-<text x="940.0" y="336.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">fixtures/*.jsonl</text>
+<rect x="860" y="288" width="160" height="64" rx="6" fill="rgba(27,42,58,0.03)" stroke="rgba(27,42,58,0.30)" stroke-width="1" stroke-dasharray="4,3"/>
+<rect x="868" y="294" width="28" height="12" rx="2" fill="transparent" stroke="#526d89" stroke-opacity="0.5" stroke-width="0.8"/>
+<text x="882.0" y="303" fill="#526d89" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
+<text x="940.0" y="321.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Индекс + GH Archive</text>
+<text x="940.0" y="336.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">резервный путь, topN</text>
 <rect x="860" y="368" width="160" height="64" rx="6" fill="#f3f7fb"/>
-<rect x="860" y="368" width="160" height="64" rx="6" fill="rgba(27,42,58,0.03)" stroke="rgba(27,42,58,0.30)" stroke-width="1"/>
+<rect x="860" y="368" width="160" height="64" rx="6" fill="rgba(27,42,58,0.03)" stroke="rgba(27,42,58,0.30)" stroke-width="1" stroke-dasharray="4,3"/>
 <rect x="868" y="374" width="28" height="12" rx="2" fill="transparent" stroke="#526d89" stroke-opacity="0.5" stroke-width="0.8"/>
 <text x="882.0" y="383" fill="#526d89" font-size="7" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.08em">EXT</text>
-<text x="940.0" y="401.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">GitHub REST</text>
-<text x="940.0" y="416.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">GET /users/{login}</text>
+<text x="940.0" y="401.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">GitHub GraphQL User</text>
+<text x="940.0" y="416.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">starredRepositories</text>
 <line x1="40" y1="476" x2="1040" y2="476" stroke="rgba(27,42,58,0.10)" stroke-width="0.8"/>
 <text x="40" y="492" fill="#46627f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.18em">ЛЕГЕНДА</text>
 <rect x="40" y="508" width="14" height="10" rx="2" fill="rgba(24,89,176,0.08)" stroke="#1859b0" stroke-width="1"/>

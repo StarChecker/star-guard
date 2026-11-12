@@ -3,6 +3,7 @@ package ru.itmo.ipkn.starguard.core.index;
 import feign.RetryableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ru.itmo.ipkn.starguard.core.archive.EventFilter;
 import ru.itmo.ipkn.starguard.core.archive.GhArchiveBulkReader;
 import ru.itmo.ipkn.starguard.core.archive.GhArchiveParser;
 import ru.itmo.ipkn.starguard.core.archive.HourReadResult;
@@ -23,7 +24,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -35,12 +35,21 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
- * Строит индекс в два прохода:
- * 1) считает звёзды по репозиториям за окно и выбирает топ-N; в том же проходе
- *    собирает почасовой {@link StarIndex} всех репозиториев для C4;
- * 2) повторно читает часы и агрегирует только выбранные репозитории.
+ * Строит индекс по почасовым дайджестам ({@link HourDigest}).
+ * <p>
+ * Каждый час окна скачивается и разбирается <b>один раз</b>: за проход собираются
+ * агрегаты всех репозиториев часа и {@link StarIndex} для C4. Топ-N выбирается по сумме
+ * звёзд дайджестов, агрегаты топа берутся из них же — второго прохода по дампу нет.
+ * <p>
+ * Дайджесты загруженных часов живут до следующей сборки: при сдвиге окна разбираются
+ * только новые часы и часы, которые в прошлый раз не загрузились (404 или ошибка после
+ * ретраев); часы, ушедшие из окна, забываются. Репозиторий, впервые попавший в топ,
+ * получает полные данные за прошлые часы из готовых дайджестов, поэтому результат
+ * совпадает с полной пересборкой окна.
+ * <p>
  * Фоновый процесс; запросы пользователей идут через готовый snapshot.
  */
 public class RepoIndexBuilder {
@@ -54,6 +63,9 @@ public class RepoIndexBuilder {
     private final RepoIndexProperties indexProperties;
     private final StarIndexProperties starIndexProperties;
     private final Clock clock;
+
+    /** Дайджесты загруженных часов последнего окна; меняется только внутри {@link #build()}. */
+    private volatile Map<Instant, HourDigest> retained = Map.of();
 
     public RepoIndexBuilder(
             GhArchiveBulkReader bulkReader,
@@ -80,7 +92,7 @@ public class RepoIndexBuilder {
         this.clock = clock;
     }
 
-    public RepoIndexSnapshot build() {
+    public synchronized RepoIndexSnapshot build() {
         int requestedHours = indexProperties.windowHours();
         if (requestedHours > archiveProperties.maxWindowHours()) {
             throw new IllegalStateException(
@@ -91,126 +103,117 @@ public class RepoIndexBuilder {
         List<Instant> hours = window.hourStarts();
         long startedAt = System.nanoTime();
 
-        List<HourScan<PhaseOne>> starScans =
-                scanHours(hours, this::phaseOneHour);
-        Map<String, Integer> starsByRepo = new HashMap<>();
-        Map<Instant, StarIndex> starIndexByHour = new HashMap<>();
-        for (HourScan<PhaseOne> scan : starScans) {
-            scan.data().starsByRepo().forEach((repo, stars) -> starsByRepo.merge(repo, stars, Integer::sum));
-            if (scan.data().starIndex().available()) {
-                starIndexByHour.put(scan.hour(), scan.data().starIndex());
+        Map<Instant, HourDigest> previous = retained;
+        Map<Instant, HourDigest> digests = new HashMap<>();
+        List<Instant> toParse = new ArrayList<>();
+        for (Instant hour : hours) {
+            HourDigest digest = previous.get(hour);
+            if (digest != null) {
+                digests.put(hour, digest);
+            } else {
+                toParse.add(hour);
             }
+        }
+        int reusedHours = digests.size();
+        for (HourDigest digest : scanHours(toParse, this::digestHour)) {
+            digests.put(digest.hour(), digest);
+        }
+        retained = digests.values().stream()
+                .filter(HourDigest::loaded)
+                .collect(Collectors.toUnmodifiableMap(HourDigest::hour, digest -> digest));
+
+        Map<String, Integer> starsByRepo = new HashMap<>();
+        Map<String, String> displayNames = new HashMap<>();
+        Map<Instant, StarIndex> starIndexByHour = new HashMap<>();
+        List<Instant> missingHours = new ArrayList<>();
+        int hoursLoaded = 0;
+        int parseErrors = 0;
+        int digestRepos = 0;
+        int digestActors = 0;
+        for (Instant hour : hours) {
+            HourDigest digest = digests.get(hour);
+            digest.repos().forEach((key, aggregate) -> {
+                int stars = aggregate.counts().stars();
+                if (stars > 0) {
+                    starsByRepo.merge(key, stars, Integer::sum);
+                }
+            });
+            // Часы обходятся по порядку: имя репозитория берётся из самого раннего часа окна.
+            digest.displayNames().forEach(displayNames::putIfAbsent);
+            if (digest.starIndex().available()) {
+                starIndexByHour.put(hour, digest.starIndex());
+            }
+            if (digest.loaded()) {
+                hoursLoaded++;
+            } else {
+                missingHours.add(hour);
+            }
+            parseErrors += digest.readResult().parseErrors();
+            digestRepos += digest.repos().size();
+            digestActors += digest.actorRecords();
         }
 
         Set<String> candidates = TopRepoSelector.select(starsByRepo, indexProperties.topN());
         if (candidates.isEmpty()) {
             throw new IndexBuildException("No WatchEvent found in the index window");
         }
-
-        List<HourScan<Map<String, MutableHourAggregate>>> detailScans =
-                scanHours(hours, hour -> phaseTwoHour(hour, candidates));
-
-        Map<Instant, Map<String, MutableHourAggregate>> byHour = new HashMap<>();
-        Map<String, String> displayNames = new HashMap<>();
-        List<Instant> missingHours = new ArrayList<>();
-        int hoursLoaded = 0;
-        int parseErrors = 0;
-        for (HourScan<Map<String, MutableHourAggregate>> scan : detailScans) {
-            byHour.put(scan.hour(), scan.data());
-            scan.data().forEach((key, aggregate) ->
-                    displayNames.putIfAbsent(key, aggregate.fullName()));
-            if (scan.readResult().missing() || scan.readResult().failed()) {
-                missingHours.add(scan.hour());
-            } else {
-                hoursLoaded++;
-            }
-            parseErrors += scan.readResult().parseErrors();
-        }
         if (hoursLoaded == 0) {
             throw new IndexBuildException("No GH Archive hours loaded for the index window");
-        }
-        missingHours.sort(Comparator.naturalOrder());
-
-        Map<String, List<RepoHourAggregate>> perRepo = new LinkedHashMap<>();
-        for (String key : candidates) {
-            perRepo.put(key, new ArrayList<>(hours.size()));
-        }
-        for (Instant hour : hours) {
-            Map<String, MutableHourAggregate> hourData = byHour.getOrDefault(hour, Map.of());
-            for (String key : candidates) {
-                MutableHourAggregate aggregate = hourData.get(key);
-                perRepo.get(key).add(aggregate == null
-                        ? RepoHourAggregate.empty(hour)
-                        : aggregate.toAggregate(hour));
-            }
         }
 
         Map<String, IndexedRepo> repos = new LinkedHashMap<>();
         for (String key : candidates) {
-            String fullName = displayNames.getOrDefault(key, key);
-            repos.put(key, new IndexedRepo(toRepoRef(fullName), List.copyOf(perRepo.get(key))));
+            List<RepoHourAggregate> perHour = new ArrayList<>(hours.size());
+            for (Instant hour : hours) {
+                perHour.add(digests.get(hour).aggregateOrEmpty(key));
+            }
+            repos.put(key, new IndexedRepo(toRepoRef(displayNames.getOrDefault(key, key)), perHour));
         }
 
         RepoIndexSnapshot snapshot = new RepoIndexSnapshot(
                 window, clock.instant(), hoursLoaded, missingHours, parseErrors, repos, starIndexByHour);
         long millis = Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
         log.info("Built repo index: {} repos, window={}, hoursLoaded={}, missing={}, parseErrors={}, "
-                        + "starIndexHours={}, took={} ms",
+                        + "starIndexHours={}, parsedHours={}, reusedHours={}, digestRepos={}, "
+                        + "digestActors={}, took={} ms",
                 repos.size(), window.hours(), hoursLoaded, missingHours.size(), parseErrors,
-                starIndexByHour.size(), millis);
+                starIndexByHour.size(), toParse.size(), reusedHours, digestRepos, digestActors, millis);
         return snapshot;
     }
 
-    private HourScan<PhaseOne> phaseOneHour(Instant hour) {
+    /** Часы, чьи дайджесты сохранены для следующей сборки (для тестов и диагностики). */
+    Set<Instant> retainedHours() {
+        return retained.keySet();
+    }
+
+    /** Один полный проход по часу: агрегаты всех репозиториев и звёзды для C4. */
+    private HourDigest digestHour(Instant hour) {
         RuntimeException lastError = null;
         for (int attempt = 0; attempt <= archiveProperties.retries(); attempt++) {
-            Map<String, Integer> local = new HashMap<>();
+            Map<String, MutableHourAggregate> local = new HashMap<>();
             StarIndex.Builder starIndex = starIndexProperties.enabled()
                     ? new StarIndex.Builder(starIndexProperties.maxPairsPerHour())
                     : null;
             try {
-                HourReadResult result = bulkReader.readHour(hour, event -> {
-                    if (event.type() == EventType.WATCH) {
-                        local.merge(GhArchiveParser.normalizeFullName(event.repoFullName()),
-                                1, Integer::sum);
-                        if (starIndex != null) {
-                            starIndex.add(event.repoFullName(), event.actorId());
-                        }
-                    }
-                });
-                boolean loaded = !result.missing() && !result.failed();
-                StarIndex hourIndex = starIndex != null && loaded
-                        ? starIndex.build(1)
-                        : StarIndex.empty();
-                return new HourScan<>(hour, new PhaseOne(local, hourIndex), result);
-            } catch (TransientArchiveException | RetryableException e) {
-                lastError = e;
-                if (attempt < archiveProperties.retries()) {
-                    sleepBackoff(attempt);
-                }
-            }
-        }
-        log.warn("Index phase 1 failed for hour {}: {}", hour,
-                lastError == null ? "unknown" : lastError.getMessage());
-        return new HourScan<>(hour, new PhaseOne(Map.of(), StarIndex.empty()),
-                new HourReadResult(hour, 0, false, true));
-    }
-
-    private HourScan<Map<String, MutableHourAggregate>> phaseTwoHour(
-            Instant hour, Set<String> candidates) {
-        RuntimeException lastError = null;
-        for (int attempt = 0; attempt <= archiveProperties.retries(); attempt++) {
-            Map<String, MutableHourAggregate> local = new HashMap<>();
-            try {
-                HourReadResult result = bulkReader.readHour(hour, event -> {
+                HourReadResult result = bulkReader.readHour(hour, EventFilter.ALL, event -> {
                     String key = GhArchiveParser.normalizeFullName(event.repoFullName());
-                    if (candidates.contains(key)) {
-                        local.computeIfAbsent(key,
-                                        ignored -> new MutableHourAggregate(event.repoFullName()))
-                                .add(event, hour);
+                    local.computeIfAbsent(key, ignored -> new MutableHourAggregate(event.repoFullName()))
+                            .add(event, hour);
+                    if (starIndex != null && event.type() == EventType.WATCH) {
+                        starIndex.add(event.repoFullName(), event.actorId());
                     }
                 });
-                return new HourScan<>(hour, local, result);
+                if (result.missing() || result.failed()) {
+                    return HourDigest.unavailable(result);
+                }
+                Map<String, RepoHourAggregate> repos = new HashMap<>(local.size() * 2);
+                Map<String, String> names = new HashMap<>(local.size() * 2);
+                local.forEach((key, aggregate) -> {
+                    repos.put(key, aggregate.toAggregate(hour));
+                    names.put(key, aggregate.fullName());
+                });
+                return new HourDigest(hour, result, repos, names,
+                        starIndex == null ? StarIndex.empty() : starIndex.build(1));
             } catch (TransientArchiveException | RetryableException e) {
                 lastError = e;
                 if (attempt < archiveProperties.retries()) {
@@ -218,13 +221,15 @@ public class RepoIndexBuilder {
                 }
             }
         }
-        log.warn("Index phase 2 failed for hour {}: {}", hour,
+        log.warn("Index hour {} failed after retries: {}", hour,
                 lastError == null ? "unknown" : lastError.getMessage());
-        return new HourScan<>(hour, Map.of(), new HourReadResult(hour, 0, false, true));
+        return HourDigest.unavailable(new HourReadResult(hour, 0, false, true));
     }
 
-    private <T> List<HourScan<T>> scanHours(
-            List<Instant> hours, Function<Instant, HourScan<T>> task) {
+    private <T> List<T> scanHours(List<Instant> hours, Function<Instant, T> task) {
+        if (hours.isEmpty()) {
+            return List.of();
+        }
         int threads = Math.max(1, Math.min(archiveProperties.parallelism(), hours.size()));
         ExecutorService executor = Executors.newFixedThreadPool(threads, runnable -> {
             Thread thread = new Thread(runnable, "gharchive-index");
@@ -232,14 +237,14 @@ public class RepoIndexBuilder {
             return thread;
         });
         try {
-            List<Future<HourScan<T>>> futures = new ArrayList<>(hours.size());
+            List<Future<T>> futures = new ArrayList<>(hours.size());
             for (Instant hour : hours) {
                 futures.add(executor.submit(() -> task.apply(hour)));
             }
-            List<HourScan<T>> scans = new ArrayList<>(hours.size());
+            List<T> results = new ArrayList<>(hours.size());
             for (int i = 0; i < futures.size(); i++) {
                 try {
-                    scans.add(futures.get(i).get());
+                    results.add(futures.get(i).get());
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     throw new IndexBuildException("Index build interrupted", e);
@@ -248,7 +253,7 @@ public class RepoIndexBuilder {
                             "Index build failed for hour " + hours.get(i), e.getCause());
                 }
             }
-            return scans;
+            return results;
         } finally {
             executor.shutdownNow();
         }
@@ -269,12 +274,6 @@ public class RepoIndexBuilder {
             Thread.currentThread().interrupt();
             throw new IndexBuildException("Interrupted during index retry backoff", e);
         }
-    }
-
-    private record HourScan<T>(Instant hour, T data, HourReadResult readResult) {
-    }
-
-    private record PhaseOne(Map<String, Integer> starsByRepo, StarIndex starIndex) {
     }
 
     private static final class MutableHourAggregate {

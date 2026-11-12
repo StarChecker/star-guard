@@ -43,7 +43,8 @@
 кросс-доменный запрос упирается в CORS даже при `host_permissions`.
 
 Используемые эндпоинты: `GET /api/v1/repos/{owner}/{name}`, `POST /api/v1/repos/batch`,
-`POST /api/v1/scans`, `GET /api/v1/scans/{id}`, `GET /api/v1/index/repos` (проверка связи).
+`POST /api/v1/scans`, `GET /api/v1/scans/{id}`, `GET /api/v1/preview/{owner}/{name}`
+(статистика GitHub, пока оценки нет), `GET /api/v1/index/repos` (popup и проверка связи).
 
 ## Ограничения
 

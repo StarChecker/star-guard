@@ -2,14 +2,21 @@ package ru.itmo.ipkn.starguard.core.scan;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.Timer;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import ru.itmo.ipkn.starguard.core.archive.ArchiveProgress;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveUnavailableException;
 import ru.itmo.ipkn.starguard.core.archive.TimeWindowCalculator;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
+import ru.itmo.ipkn.starguard.core.github.GithubUnavailableException;
+import ru.itmo.ipkn.starguard.core.github.RepoGoneException;
+import ru.itmo.ipkn.starguard.core.metrics.StarGuardMetrics;
 import ru.itmo.ipkn.starguard.core.service.RepoNotFoundException;
 import ru.itmo.ipkn.starguard.core.service.RepoReportService;
 
@@ -45,12 +52,16 @@ public class ScanService {
             .build();
     private final ConcurrentHashMap<String, String> jobIdByKey = new ConcurrentHashMap<>();
     private final ExecutorService executor;
+    private final AtomicInteger active = new AtomicInteger();
 
     public ScanService(RepoReportService reportService, TimeWindowCalculator windowCalculator, Clock clock) {
         this.reportService = reportService;
         this.windowCalculator = windowCalculator;
         this.clock = clock;
         AtomicInteger threads = new AtomicInteger();
+        Gauge.builder(StarGuardMetrics.SCAN_ACTIVE, active, AtomicInteger::get)
+                .description("Сканов выполняется сейчас")
+                .register(Metrics.globalRegistry);
         this.executor = Executors.newFixedThreadPool(WORKERS, runnable -> {
             Thread thread = new Thread(runnable, "repo-scan-" + threads.incrementAndGet());
             thread.setDaemon(true);
@@ -58,17 +69,30 @@ public class ScanService {
         });
     }
 
-    /** Запускает скан или возвращает уже идущий/готовый для того же репозитория и окна. */
+    /** Запускает скан по умолчанию: история GitHub, если есть токен, иначе GH Archive. */
     public ScanJob start(RepoRef repo, Integer requestedHours) {
+        return start(repo, requestedHours, null);
+    }
+
+    /**
+     * Запускает скан или возвращает уже идущий/готовый для того же репозитория, окна и источника.
+     *
+     * @param source null — выбрать автоматически
+     */
+    public ScanJob start(RepoRef repo, Integer requestedHours, ScanJob.Source source) {
         TimeWindow window = windowCalculator.window(requestedHours);
-        String key = repo.fullName().toLowerCase(Locale.ROOT) + "|" + window.from() + "|" + window.hours();
+        ScanJob.Source chosen = source != null
+                ? source
+                : reportService.historyAvailable() ? ScanJob.Source.GITHUB : ScanJob.Source.ARCHIVE;
+        String key = repo.fullName().toLowerCase(Locale.ROOT) + "|" + chosen + "|"
+                + (chosen == ScanJob.Source.GITHUB ? "history" : window.from() + "|" + window.hours());
         synchronized (jobIdByKey) {
             String existingId = jobIdByKey.get(key);
             ScanJob existing = existingId == null ? null : jobs.getIfPresent(existingId);
             if (existing != null && existing.status() != ScanJob.Status.FAILED) {
                 return existing;
             }
-            ScanJob job = new ScanJob(UUID.randomUUID().toString(), repo, window.hours(), clock.instant());
+            ScanJob job = new ScanJob(UUID.randomUUID().toString(), repo, window.hours(), chosen, clock.instant());
             jobs.put(job.id(), job);
             jobIdByKey.put(key, job.id());
             executor.submit(() -> run(job, requestedHours));
@@ -82,9 +106,17 @@ public class ScanService {
 
     private void run(ScanJob job, Integer requestedHours) {
         job.running();
+        active.incrementAndGet();
+        Timer.Sample sample = Timer.start(Metrics.globalRegistry);
         try {
-            job.done(reportService.scanArchive(
-                    job.repo(), requestedHours, null, (done, total) -> job.progress(done)));
+            ArchiveProgress progress = job::progress;
+            job.done(job.source() == ScanJob.Source.GITHUB
+                    ? reportService.historyReport(job.repo(), null, progress)
+                    : reportService.scanArchive(job.repo(), requestedHours, null, progress));
+        } catch (RepoGoneException e) {
+            job.failed("REPO_NOT_FOUND_ON_GITHUB", e.getMessage());
+        } catch (GithubUnavailableException e) {
+            job.failed(e.code(), e.getMessage());
         } catch (RepoNotFoundException e) {
             job.failed("REPO_NOT_FOUND_IN_WINDOW", e.getMessage());
         } catch (ArchiveUnavailableException e) {
@@ -92,6 +124,14 @@ public class ScanService {
         } catch (RuntimeException e) {
             log.error("Scan {} for {} failed", job.id(), job.repo().fullName(), e);
             job.failed("INTERNAL_ERROR", "Unexpected error during scan");
+        } finally {
+            active.decrementAndGet();
+            sample.stop(Timer.builder(StarGuardMetrics.SCAN_LATENCY)
+                    .description("Скан по запросу: от старта до результата")
+                    .tag("source", job.source().name().toLowerCase(Locale.ROOT))
+                    .tag("outcome", job.status() == ScanJob.Status.DONE ? "done"
+                            : job.errorCode() == null ? "failed" : job.errorCode().toLowerCase(Locale.ROOT))
+                    .register(Metrics.globalRegistry));
         }
     }
 

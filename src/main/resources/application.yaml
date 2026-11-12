@@ -24,7 +24,10 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: star-guard
 
 springdoc:
   api-docs:
@@ -54,6 +57,7 @@ app:
     window-hours: 6           # окно индекса; hours в запросе не может его превышать
     build-on-startup: true    # фоновый прогрев; до готовности API отвечает 503 INDEX_NOT_READY
     refresh-cron: "0 10 * * * *"   # UTC, после задержки публикации GH Archive
+    memory-budget-mb: 1024    # F3-6: heap после сборки индекса; JVM в контейнере -Xmx1280m
   github:
     enabled: false
     base-url: https://api.github.com
@@ -63,6 +67,58 @@ app:
     cache-ttl: 24h
     cache-max-size: 100000
     rate-limit-pause: 1m
+    preview:                  # F5: GET /api/v1/preview/{owner}/{name} — базовая статистика GitHub REST
+      enabled: true           # токен необязателен (без него — 60 запросов в час)
+      cache-ttl: 15m
+    history:                  # анализ любого репозитория по истории GitHub (нужен GITHUB_TOKEN)
+      max-days: 30            # окно анализа и максимум параметра days
+      history-days: 180       # сколько дней дневной истории звёзд грузить для базовой линии
+      max-fork-pages: 10      # сколько страниц форков по 100 считать для старых репозиториев
+      cache-ttl: 5m           # кэш данных GitHub на репозиторий
+      existence-check: true   # скрывать из /api/v1/index/repos удалённые на GitHub репозитории
+      existence-ttl: 6h
+  report:
+    source: auto              # auto | index | github; auto - история GitHub при наличии GITHUB_TOKEN
+  tracker:
+    enabled: false            # снимки звёзд каждые 5 минут в PostgreSQL
+    jdbc-url: jdbc:postgresql://localhost:5432/starguard
+    username: starguard
+    password: starguard
+    poll-interval: 5m
+    popular-size: 10000       # топ по звёздам, опрашивается всегда
+    popular-refresh-cron: "0 30 3 * * *"
+    watch-ttl: 30d            # сколько наблюдать репозиторий после последнего отчёта по нему
+    max-watched: 5000
+    raw-retention: 26h        # снимки с шагом опроса
+    hourly-retention: 8d      # почасовые значения для суточного профиля
+    rate-limit-reserve: 500   # не тратить последние очки GraphQL
+    rising:                   # быстрорастущие новые репозитории, ловим со старта
+      enabled: true
+      max-age-days: 30        # ищем репозитории не старше
+      min-stars: 100
+      day-stars: 100          # вход: в среднем от 100 звёзд в день с создания
+      exit-day-stars: 20      # выход: меньше 20 звёзд за сутки
+      exit-days: 3            # ... 3 дня подряд
+      max: 3000
+      discovery-cron: "0 20 * * * *"
+  account-pool:
+    enabled: ${ACCOUNT_POOL_ENABLED:false} # нужен также app.tracker.enabled и GITHUB_TOKEN
+    max-accounts: 10000       # только top-N по оценке подозрительности
+    refresh-batch: 100        # максимум повторных проверок за проход
+    discovery-batch: 20       # одна страница форкеров одного отслеживаемого репозитория
+    interval: 10m
+    refresh-after: 1d
+    stale-after: 3d           # более старые профили исключаются из отчёта
+    min-stars: 1000
+    max-repos: 1              # публичные собственные репозитории без форков
+    max-followers: 5
+    max-contributions: 2      # contributionsCollection за последний год
+    burst-size: 10            # >=10 звёзд за минуту, минимум две такие минуты
+    burst-share: 0.5          # >=50% выборки должны попадать в такие минуты
+    min-matches: 5            # меньше — показывать на графике, но не менять score
+    full-signal-matches: 100
+    max-score-floor: 70       # signal только поднимает нижнюю границу score
+    rate-reserve: 1000        # оставлять очки GraphQL другим функциям
   scoring:
     mode: mock                # mock | real — общий переключатель реализаций C1–C5
     mock-mode: healthy        # профиль моков: healthy | borderline | suspicious (только для mock-проверок)
@@ -118,3 +174,56 @@ app:
         truncated-penalty: 0.75           # × confidence, если индекс обрезан лимитом памяти
         top-overlaps: 3                   # сколько пересекающихся репозиториев показать в explain
         suspicious-jaccard: 0.25          # звёзды общих акторов с репозиториями J >= порога — подозрительные на таймлайне
+    github:                               # режим GitHub: дневная история звёзд, активность, снимки трекера
+      min-confidence: 0.5
+      weights:
+        daily_burst: 0.30
+        dev_activity: 0.25
+        fork_ratio: 0.20
+        intraday_burst: 0.10
+        hourly_profile: 0.05
+        star_drops: 0.10
+      amplification:
+        multi-trigger:
+          min-checks: 2
+          check-score-at-least: 0.7
+          floor: 60
+        strong-check:
+          check-ids: [intraday_burst, star_drops]
+          check-score-at-least: 0.85
+          min-confidence: 0.7
+          floor: 70
+      levels:
+        medium: 30
+        high: 60
+        critical: 85
+      checks:
+        daily-burst:
+          baseline-days: 28               # база - медиана звёзд за предыдущие дни
+          min-baseline-days: 7
+          ratio-floor: 3.0
+          ratio-span: 12.0
+          min-excess: 100                 # всплеск значим, если звёзд выше базы на столько
+        dev-activity:
+          floor: 0.05                     # issues + PR + коммиты на необъяснённую звезду, выше - норма
+          min-stars: 100
+          max-age-days: 90                # моложе - все звёзды окна требуют объяснения
+          baseline-days: 60               # для старых: обычный темп звёзд до окна
+          unexplained-share: 0.5          # меньше этой доли сверх обычного темпа - стабильный приток
+        fork-ratio:
+          floor: 0.2                      # форков на звезду, ниже - норма
+          span: 0.2
+          min-stars: 200
+          max-age-days: 90                # у зрелых репозиториев форков к новым звёздам и так много
+        intraday-burst:
+          min-coverage: 0.5               # доля суток со снимками трекера
+        hourly-profile:
+          min-days: 3
+          kl-floor: 0.3
+          kl-span: 1.2
+          min-stars: 50
+        star-drops:
+          share-floor: 0.03               # доля пропавших звёзд, ниже - обычные отписки
+          share-span: 0.12
+          min-dropped: 30
+          min-hours: 12

@@ -7,6 +7,7 @@ import ru.itmo.ipkn.starguard.core.api.dto.HourBucketDto;
 import ru.itmo.ipkn.starguard.core.api.dto.RepoDto;
 import ru.itmo.ipkn.starguard.core.api.dto.RepoReportDto;
 import ru.itmo.ipkn.starguard.core.api.dto.ScoreDto;
+import ru.itmo.ipkn.starguard.core.api.dto.SourceDto;
 import ru.itmo.ipkn.starguard.core.api.dto.StarTimelineDto;
 import ru.itmo.ipkn.starguard.core.api.dto.StatsDto;
 import ru.itmo.ipkn.starguard.core.api.dto.WindowDto;
@@ -61,7 +62,12 @@ public class RepoReportMapper {
                         report.archive().missingHours(),
                         report.archive().parseErrors(),
                         report.archive().cached()),
-                toTimeline(report.starsTimeline()));
+                toTimeline(report.starsTimeline()),
+                new SourceDto(
+                        report.source().type().name().toLowerCase(Locale.ROOT),
+                        report.source().starsSampled(),
+                        report.source().starsTotal(),
+                        report.source().coverageFrom()));
     }
 
     private CheckDto toCheck(CheckContribution contribution, RepoStats stats) {
@@ -85,7 +91,7 @@ public class RepoReportMapper {
                 timeline.suspiciousStars(),
                 timeline.suspiciousByCheck(),
                 timeline.points().stream()
-                        .map(point -> new StarTimelineDto.PointDto(point.at(), point.stars(), point.suspicious()))
+                        .map(point -> new StarTimelineDto.PointDto(point.at(), point.stars(), point.suspicious(), point.suspectAccounts()))
                         .toList());
     }
 }

@@ -13,4 +13,17 @@ import java.util.function.Consumer;
 public interface GhArchiveBulkReader {
 
     HourReadResult readHour(Instant hour, Consumer<GhEvent> sink);
+
+    /**
+     * Чтение часа с ранним фильтром: строки, которые {@code filter} отклонил по
+     * {@code type} или {@code repo.name}, не дочитываются. Реализация по умолчанию
+     * фильтрует уже разобранные события — результат тот же, только без ускорения.
+     */
+    default HourReadResult readHour(Instant hour, EventFilter filter, Consumer<GhEvent> sink) {
+        return readHour(hour, event -> {
+            if (filter.accepts(event)) {
+                sink.accept(event);
+            }
+        });
+    }
 }

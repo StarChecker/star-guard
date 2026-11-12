@@ -58,11 +58,11 @@
   <div class="frame">
     <p class="eyebrow">Flowchart · Star Guard</p>
     <h1>Сборка индекса топ-1000</h1>
-    <p class="note">Сборка идёт в фоне на старте и по cron. Пока индекс не готов, API отвечает 503. При ошибке остаётся прежний snapshot. С app.archive.window-end окно фиксировано, поэтому индекс строится один раз.</p>
+    <p class="note">Резервный путь (app.report.source=index), используется при отсутствии GITHUB_TOKEN или явном выборе index-режима. Сборка идёт в фоне на старте и по cron. Пока индекс не готов, API отвечает 503. При ошибке остаётся прежний snapshot. С app.archive.window-end окно фиксировано, поэтому индекс строится один раз.</p>
     <div class="diagram-container">
       <svg viewBox="0 0 920 636" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="star-guard-index-title star-guard-index-desc">
-        <title id="star-guard-index-title">Сборка индекса топ-1000</title>
-        <desc id="star-guard-index-desc">Индекс строится в два прохода по часовым дампам GH Archive: сначала выбирается топ-N по звёздам и собирается StarIndex, затем агрегируются только выбранные репозитории, и готовый snapshot атомарно подменяет прежний.</desc>
+        <title id="star-guard-index-title">Сборка индекса топ-1000 (резервный путь)</title>
+        <desc id="star-guard-index-desc">Резервный путь на базе GH Archive: индекс строится в два прохода по часовым дампам, сначала выбирается топ-N по звёздам, затем агрегируются только выбранные репозитории, и готовый snapshot атомарно подменяет прежний.</desc>
         <defs>
           <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#46627f"/></marker>
           <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1859b0"/></marker>
@@ -108,7 +108,7 @@
 <rect x="320" y="208" width="240" height="56" rx="6" fill="#f3f7fb"/>
 <rect x="320" y="208" width="240" height="56" rx="6" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
 <text x="440.0" y="233.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Проход 1: топ-N по звёздам</text>
-<text x="440.0" y="248.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">звёзды по репо, StarIndex для C4</text>
+<text x="440.0" y="248.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">звёзды по репо, StarIndex</text>
 <rect x="320" y="296" width="240" height="56" rx="6" fill="#f3f7fb"/>
 <rect x="320" y="296" width="240" height="56" rx="6" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
 <text x="440.0" y="321.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Проход 2: агрегаты топа</text>

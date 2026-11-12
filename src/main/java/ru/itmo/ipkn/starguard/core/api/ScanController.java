@@ -40,7 +40,9 @@ public class ScanController {
     @Operation(summary = "Запустить скан",
             description = "Возвращает 202 и id; повторный запрос для того же репозитория и окна вернёт тот же скан.")
     public ResponseEntity<ScanDto> start(@Valid @RequestBody ScanRequest request) {
-        ScanJob job = scanService.start(new RepoRef(request.owner(), request.name()), request.hours());
+        ScanJob.Source source = request.source() == null ? null
+                : ScanJob.Source.valueOf(request.source().toUpperCase(Locale.ROOT));
+        ScanJob job = scanService.start(new RepoRef(request.owner(), request.name()), request.hours(), source);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(toDto(job));
     }
 
@@ -56,8 +58,9 @@ public class ScanController {
                 job.id(),
                 new RepoDto(repo.owner(), repo.name(), repo.fullName()),
                 job.status().name().toLowerCase(Locale.ROOT),
+                job.source().name().toLowerCase(Locale.ROOT),
                 job.hoursDone(),
-                job.hoursTotal(),
+                job.stepsTotal(),
                 job.createdAt(),
                 job.report() == null ? null : mapper.toDto(job.report()),
                 job.errorCode(),

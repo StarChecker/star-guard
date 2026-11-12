@@ -10,6 +10,8 @@ public record RepoReportDto(
         ScoreDto score,
         ArchiveDto archive,
         @Schema(description = "Звёзды по времени с разметкой подозрительных — для графика")
-        StarTimelineDto starsTimeline
+        StarTimelineDto starsTimeline,
+        @Schema(description = "Откуда данные: индекс GH Archive, прямой скан GH Archive или история GitHub")
+        SourceDto source
 ) {
 }

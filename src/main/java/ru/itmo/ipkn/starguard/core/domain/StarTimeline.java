@@ -32,8 +32,13 @@ public record StarTimeline(
         return new StarTimeline(bucketMinutes, false, List.of(), 0, Map.of());
     }
 
-    /** Одна точка: начало интервала, все звёзды и подозрительные из них. */
-    public record Point(Instant at, int stars, int suspicious) {
+    /**
+     * Одна точка: общий ряд, прежняя оценка подозрительных и отдельная выборка аккаунтов пула.
+     * suspectAccounts нельзя суммировать с suspicious: их пересечение неизвестно.
+     */
+    public record Point(Instant at, int stars, int suspicious, int suspectAccounts) {
+
+        public Point(Instant at, int stars, int suspicious) { this(at, stars, suspicious, 0); }
 
         public Point {
             Objects.requireNonNull(at, "at");

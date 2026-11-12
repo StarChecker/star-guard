@@ -14,7 +14,8 @@
     chrome.runtime.sendMessage(message, (response) => resolve(response || { ok: false, code: 'NO_RESPONSE' })));
 
   const actions = {
-    onScan: () => scan(),
+    onScan: () => scan(hours),
+    onScanDay: () => scan(24),
     onRetry: () => send({ type: 'clearCache' }).then(load),
     onOpenOptions: () => chrome.runtime.openOptionsPage(),
     onWindowChange: (hours) => changeWindow(hours),
@@ -33,14 +34,29 @@
     load();
   }
 
+  let preview = null;
+  let previewRequested = false;
+
   function render(state) {
-    UI.renderCard(shadow, state, actions);
+    const waiting = ['not_indexed', 'no_data', 'scanning', 'index_not_ready'].includes(state.kind);
+    if (waiting && !previewRequested) {
+      previewRequested = true;
+      send({ type: 'preview', repo }).then((response) => {
+        if (!response.ok) return;
+        preview = response.data;
+        render(lastState);
+      });
+    }
+    lastState = state;
+    UI.renderCard(shadow, waiting && preview ? { ...state, preview } : state, actions);
   }
+  let lastState = { kind: 'loading' };
 
   function toState(response) {
     if (response.ok) return { kind: 'report', data: response.data };
     if (response.code === 'REPO_NOT_INDEXED') return { kind: 'not_indexed', hours };
     if (response.code === 'REPO_NOT_FOUND_IN_WINDOW') return { kind: 'no_data', hours };
+    if (response.code === 'REPO_NOT_FOUND_ON_GITHUB') return { kind: 'gone', hours };
     if (response.code === 'INDEX_NOT_READY') return { kind: 'index_not_ready', hours };
     if (response.code === 'INVALID_REQUEST') return { kind: 'out_of_window', hours, message: response.message };
     return { kind: 'error', hours, code: response.code, message: response.message, apiBase: response.apiBase };
@@ -51,17 +67,20 @@
     render(toState(await send({ type: 'report', repo, hours })));
   }
 
-  async function scan() {
-    render({ kind: 'scanning', done: 0, total: hours, hours });
-    const started = await send({ type: 'scanStart', repo, hours });
+  async function scan(scanHours) {
+    render({ kind: 'scanning', done: 0, total: scanHours, hours: scanHours });
+    const started = await send({ type: 'scanStart', repo, hours: scanHours });
     if (!started.ok) return render(toState(started));
     const poll = async () => {
       const status = await send({ type: 'scanStatus', id: started.data.id });
       if (!status.ok) return render(toState(status));
       const job = status.data;
       if (job.status === 'done') return render({ kind: 'report', data: job.report });
-      if (job.status === 'failed') return render(toState({ ok: false, code: job.error_code, message: job.error_message }));
-      render({ kind: 'scanning', done: job.hours_done, total: job.hours_total, hours });
+      if (job.status === 'failed') {
+        const failed = toState({ ok: false, code: job.error_code, message: job.error_message });
+        return render({ ...failed, hours: job.source === 'github' ? 720 : job.hours_total });
+      }
+      render({ kind: 'scanning', done: job.hours_done, total: job.hours_total, hours: job.hours_total, source: job.source });
       setTimeout(poll, 1500);
     };
     poll();
@@ -82,11 +101,12 @@
       repo = null;
     }
     if (!repo) {
-      shadow.replaceChildren(Object.assign(document.createElement('style'), { textContent: UI.STYLES }),
-        Object.assign(document.createElement('p'), {
-          className: 'sg', textContent: 'Откройте страницу репозитория на GitHub — здесь появится оценка его звёзд.',
-          style: 'color: var(--fgColor-muted); padding: 12px 0',
-        }));
+      // Не страница репозитория: показываем живые репозитории индекса с оценкой — с чего начать.
+      const open = (fullName) => chrome.tabs.update(tab.id, { url: 'https://github.com/' + fullName });
+      UI.renderTop(shadow, { kind: 'loading' }, open);
+      const top = await send({ type: 'top', limit: 15 });
+      UI.renderTop(shadow, top.ok ? { kind: 'top', data: top.data }
+        : { kind: 'error', message: top.code === 'API_UNREACHABLE' ? 'Сервер Star Guard недоступен.' : (top.message || top.code) }, open);
       return;
     }
     load();

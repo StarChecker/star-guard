@@ -28,9 +28,9 @@
 ## Сводка
 
 - Всего задач: **28**
-- ⬜ не взят: **23**
-- 🟡 в работе: **1** (F2-5, `@h0o0p0e`)
-- ✅ выполнено: **4** (F2-1…F2-4, отдельный репозиторий)
+- ⬜ не взят: **18**
+- 🟡 в работе: **6**
+- ✅ выполнено: **4**
 
 ## F1. Расширение: аккаунты, интервалы всплеска, контрибьюторы
 
@@ -60,19 +60,19 @@
 
 | ID | Задача | Владелец | Оценка | Dep | Статус | Ветка / PR |
 |----|--------|----------|--------|-----|--------|------------|
-| F3-1 | Streaming-парсер, lightweight pass 1, early repo filter | Dev 2 · `@Ar6yZxZ` | 3 | — | ⬜ | — |
-| F3-2 | Почасовые compact-агрегаты, инкрементальный сдвиг окна | Dev 2 · `@Ar6yZxZ` | 3 | F3-1 | ⬜ | — |
+| F3-1 | Streaming-парсер, lightweight pass 1, early repo filter | Dev 2 · `@Ar6yZxZ` | 3 | — | 🟡 | `feat/f3-1-streaming-parser` · [PR #13](https://github.com/StarChecker/star-guard/pull/13) на ревью · [отчёт](f3-1-streaming-parser.md) |
+| F3-2 | Почасовые compact-агрегаты, инкрементальный сдвиг окна | Dev 2 · `@Ar6yZxZ` | 3 | F3-1 | 🟡 | `feat/f3-2-hourly-aggregates` · [PR #14](https://github.com/StarChecker/star-guard/pull/14) на ревью (поверх PR #13) |
 | F3-3 | Tiered-модель top-10k + detail-1k + long-tail, primitive arrays | Dev 3 · `@mpstrkv` | 4 | F3-2 | ⬜ | — |
 | F3-4 | Precomputed rank/totalStars, read-only minute series, дедуп | Dev 3 · `@mpstrkv` | 2 | F3-3 | ⬜ | — |
 | F3-5 | C4 на 10k: инвертированный actor→repos / overlaps | Dev 3 · `@mpstrkv` | 2 | F3-3 | ⬜ | — |
-| F3-6 | Memory budget 1 ГБ, JVM `-Xmx1280m`, бенчмарк | Dev 5 · `@writenowme` | 2 | F3-3 | ⬜ | — |
+| F3-6 | Memory budget 1 ГБ, JVM `-Xmx1280m`, бенчмарк | Dev 5 · `@writenowme` | 2 | F3-3 | 🟡 | [PR #17](https://github.com/StarChecker/star-guard/pull/17): бюджет `app.index.memory-budget-mb`, контроль heap после сборки, `-Xmx1280m`, бенчмарк; eviction — после F3-3 |
 
 ## F4. Произвольный репозиторий: long-tail и 1–3 с
 
 | ID | Задача | Владелец | Оценка | Dep | Статус | Ветка / PR |
 |----|--------|----------|--------|-----|--------|------------|
-| F4-1 | Long-tail индекс всех репозиториев окна | Dev 2 · `@Ar6yZxZ` | 4 | F3-3 | ⬜ | — |
-| F4-2 | `POST/PUT /api/v1/index/repos`: добавить/закрепить | Dev 2 · `@Ar6yZxZ` | 2 | F4-1 | ⬜ | — |
+| F4-1 | Long-tail индекс всех репозиториев окна | Dev 2 · `@Ar6yZxZ` | 4 | F3-3 | 🟡 | `feat/f4-1-long-tail-index` · [PR #18](https://github.com/StarChecker/star-guard/pull/18) на ревью (поверх #14): long-tail из `HourDigest`, без ожидания F3-3 — формат хранения потом меняет F3-3 |
+| F4-2 | `POST/PUT /api/v1/index/repos`: добавить/закрепить | Dev 2 · `@Ar6yZxZ` | 2 | F4-1 | 🟡 | `feat/f4-2-index-repos-endpoint` · [PR #19](https://github.com/StarChecker/star-guard/pull/19) на ревью (поверх #18); TTL и приоритетный скан — F4-3 |
 | F4-3 | Приоритетный scan-job, TTL pinned, выживание при rebuild | Dev 3 · `@mpstrkv` | 2 | F4-2 | ⬜ | — |
 | F4-4 | Тесты ≤3 с, cold 202, идемпотентность, benchmark | Dev 5 · `@writenowme` | 1 | F4-1…F4-3 | ⬜ | — |
 
@@ -80,19 +80,19 @@
 
 | ID | Задача | Владелец | Оценка | Dep | Статус | Ветка / PR |
 |----|--------|----------|--------|-----|--------|------------|
-| F5-1 | GitHub-клиент stats/forks/issues/contributors, кэш | Dev 5 · `@writenowme` | 2 | — | ⬜ | — |
-| F5-2 | `GET /api/v1/preview/{owner}/{name}` | Dev 5 · `@writenowme` | 1 | F5-1 | ⬜ | — |
+| F5-1 | GitHub-клиент stats/forks/issues/contributors, кэш | Dev 5 · `@writenowme` | 2 | — | ✅ | REST-клиент + кэш + пауза по rate limit — [PR #16](https://github.com/StarChecker/star-guard/pull/16); история GraphQL — [PR #11](https://github.com/StarChecker/star-guard/pull/11) |
+| F5-2 | `GET /api/v1/preview/{owner}/{name}` | Dev 5 · `@writenowme` | 1 | F5-1 | ✅ | `source=github`, `partial=true` — [PR #16](https://github.com/StarChecker/star-guard/pull/16) |
 | F5-3 | Extension/MCP: preview в состоянии «нет событий» | Dev 4 · `@nenerower` | 1 | F5-2 | ⬜ | — |
-| F5-4 | WireMock-тесты, OpenAPI, документация | Dev 5 · `@writenowme` | 1 | F5-1…F5-3 | ⬜ | — |
+| F5-4 | WireMock-тесты, OpenAPI, документация | Dev 5 · `@writenowme` | 1 | F5-1…F5-3 | ✅ | `GithubPreviewIntegrationTest`, OpenAPI, README — [PR #16](https://github.com/StarChecker/star-guard/pull/16) |
 
 ## X. Кросс-задачи
 
 | ID | Задача | Владелец | Оценка | Dep | Статус | Ветка / PR |
 |----|--------|----------|--------|-----|--------|------------|
 | X-1 | OpenAPI/README: поля, эндпоинты, коды ошибок | Dev 1 · `@h0o0p0e` | 1 | F1–F5 | ⬜ | — |
-| X-2 | Метрики index/parse/scan/mcp | Dev 5 · `@writenowme` | 1–2 | F3, F4 | ⬜ | — |
+| X-2 | Метрики index/parse/scan/mcp | Dev 5 · `@writenowme` | 1–2 | F3, F4 | 🟡 | [PR #17](https://github.com/StarChecker/star-guard/pull/17): index/scan + `/actuator/prometheus`; `parse.lines/sec` — после F3-1, `mcp.tool.latency` — после F2 |
 | X-3 | Приватность логинов/hash, MCP без внешних запросов | Dev 1 · `@h0o0p0e` | 1 | F1, F2 | ⬜ | — |
-| X-4 | CI: unit/integration офлайн + perf-smoke | Dev 5 · `@writenowme` | 1 | F3 | ⬜ | — |
+| X-4 | CI: unit/integration офлайн + perf-smoke | Dev 5 · `@writenowme` | 1 | F3 | ✅ | [PR #17](https://github.com/StarChecker/star-guard/pull/17): `PerfSmokeTest`, отчёт в сводке CI |
 | X-5 | Документация MCP/Claude Code, extension, on-demand | Dev 1 · `@h0o0p0e` | 1 | F2, F4 | ⬜ | — |
 
 ---

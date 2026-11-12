@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<title>Star Guard: прогон репозиториев</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F3F6F9; --panel:#FFFFFF; --ink:#0E1C2A; --muted:#5B6B7B; --line:#D7E0E8; --band:#E9EFF5;
+  --c-daily:#2F6FA3; --c-dev:#6FA8D6; --c-fork:#1B3F5E;
+  --low:#2E8B78; --medium:#B88A1E; --high:#C9622A; --critical:#B83838;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  color-scheme:dark; --bg:#0C151E; --panel:#111D29; --ink:#E2EBF3; --muted:#8FA1B2; --line:#22323F; --band:#16232F;
+  --c-daily:#5B9BD0; --c-dev:#A6CDEB; --c-fork:#3C76A6;
+  --low:#4CB59E; --medium:#D9AB3F; --high:#E68352; --critical:#E26363;}}
+:root[data-theme="dark"]{
+  color-scheme:dark; --bg:#0C151E; --panel:#111D29; --ink:#E2EBF3; --muted:#8FA1B2; --line:#22323F; --band:#16232F;
+  --c-daily:#5B9BD0; --c-dev:#A6CDEB; --c-fork:#3C76A6;
+  --low:#4CB59E; --medium:#D9AB3F; --high:#E68352; --critical:#E26363;}
+body{background:var(--bg); color:var(--ink); font:15px/1.55 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif; padding:32px 16px 48px}
+main{max-width:980px; margin:0 auto; display:grid; gap:28px}
+h1{font-size:26px; font-weight:600; margin:0; text-wrap:balance}
+.lede{color:var(--muted); max-width:68ch; margin:6px 0 0}
+.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+.legend{display:flex; flex-wrap:wrap; gap:8px 20px; font-size:13px; color:var(--muted)}
+.legend span{display:inline-flex; align-items:center; gap:6px}
+.sw{width:12px; height:12px; border-radius:2px; display:inline-block}
+.chart{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:20px 20px 12px; overflow-x:auto}
+.group{font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:18px 0 6px}
+.group:first-child{margin-top:0}
+.row{display:grid; grid-template-columns:minmax(150px,260px) 1fr 118px; gap:12px; align-items:center; padding:5px 0; border-top:1px solid var(--line)}
+.name a{color:var(--ink); text-decoration:none; font-size:13px; word-break:break-all}
+.name a:hover,.name a:focus-visible{text-decoration:underline; outline:none}
+.name small{display:block; color:var(--muted); font-size:12px}
+.track{position:relative; height:22px; background:linear-gradient(90deg,var(--band) 0 30%,transparent 30% 60%,var(--band) 60% 85%,transparent 85%); border-radius:3px; display:flex}
+.seg{height:100%}
+.seg:first-child{border-radius:3px 0 0 3px}
+.score{font-size:13px; text-align:right; white-space:nowrap}
+.pill{display:inline-block; font-size:11px; padding:0 6px; border-radius:9px; border:1px solid currentColor; margin-left:4px}
+.axis{display:grid; grid-template-columns:minmax(150px,260px) 1fr 118px; gap:12px; font-size:11px; color:var(--muted); margin-top:4px}
+.axis div{position:relative; height:16px}
+.axis b{position:absolute; transform:translateX(-50%); font-weight:400}
+.notes{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px}
+.note{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px; font-size:14px}
+.note h2{font-size:14px; margin:0 0 6px; font-weight:600}
+.note p{margin:0; color:var(--muted)}
+.tip{font-size:12px; color:var(--muted)}
+@media (max-width:620px){.row,.axis{grid-template-columns:1fr 110px}.row .name{grid-column:1/-1}.axis div:first-child{display:none}}
+</style>
+<main>
+  <header>
+    <h1>Прогон тестовых репозиториев через Star Guard</h1>
+    <p class="lede">Живой запуск сервиса в Docker, режим GitHub, окно 30 дней, 12 ноября 2026. Столбец показывает итоговый score (0-100) и вклад каждой проверки. Фон шкалы размечен порогами уровней: 30, 60, 85.</p>
+  </header>
+  <div class="legend" aria-label="Легенда">
+    <span><i class="sw" style="background:var(--c-daily)"></i>daily_burst: всплески по дням</span>
+    <span><i class="sw" style="background:var(--c-dev)"></i>dev_activity: звёзды без разработки</span>
+    <span><i class="sw" style="background:var(--c-fork)"></i>fork_ratio: форки к звёздам</span>
+  </div>
+  <section class="chart" id="chart" aria-label="Score по репозиториям"></section>
+  <section class="notes">
+    <div class="note"><h2>Подозрительные ловятся</h2><p>Все пять заведомо накрученных получают medium и выше. Главный сигнал у молодых репозиториев: тысячи звёзд при единицах коммитов, issues и PR, у HGhub и GestaltX ещё и аномально много форков.</p></div>
+    <div class="note"><h2>Органика спокойна</h2><p>Крупные зрелые проекты и списки awesome получают 0-20. Стабильный приток звёзд без разработки не штрафуется: dev_activity считает только звёзды сверх обычного темпа.</p></div>
+    <div class="note"><h2>Пограничные случаи</h2><p>sherlock (96) и dockur/windows (36) органические, но у них вирусная волна. На дневном разрешении её не отличить от покупки. Различить должен внутридневной трекер, который сейчас не набирает покрытия (см. отчёт).</p></div>
+  </section>
+  <p class="tip">Внутридневные проверки (intraday_burst, hourly_profile, star_drops) и suspect_accounts ни у кого не активны: трекер работает около часа, а пул аккаунтов пока пуст.</p>
+</main>
+<script>
+const DATA=[{"r":"Adkid-Zephyr/anti-defensive-writing-Skill","s":44,"l":"medium","st":2968,"c":[{"id":"dev_activity","w":43.7}],"sum":"На 1528 звёзд сверх обычного темпа за 29 дн. пришлось 2 issues, 1 PR, 0 коммитов."},{"r":"Minireel/HGhub","s":85,"l":"critical","st":8514,"c":[{"id":"dev_activity","w":47.1},{"id":"fork_ratio","w":38.1}],"sum":"На 8514 звёзд сверх обычного темпа за 29 дн. пришлось 38 issues, 26 PR, 1 коммитов."},{"r":"NotRexed/Hookshot","s":0,"l":"low","st":8440,"c":[],"sum":null},{"r":"codecrafters-io/build-your-own-x","s":0,"l":"low","st":10078,"c":[],"sum":null},{"r":"deepseek-ai/DeepInfer","s":67,"l":"high","st":25898,"c":[{"id":"daily_burst","w":40.0},{"id":"dev_activity","w":26.8}],"sum":"Самый резкий день 2026-10-23: 1071 звезда при обычных 3.0 в день (x357), таких дней в окне: 1."},{"r":"dockur/windows","s":36,"l":"medium","st":650,"c":[{"id":"daily_burst","w":36.0}],"sum":"Самый резкий день 2026-10-29: 131 звезда при обычных 12 в день (x11), таких дней в окне: 1."},{"r":"donnemartin/system-design-primer","s":0,"l":"low","st":4031,"c":[],"sum":null},{"r":"facebook/react","s":13,"l":"low","st":1990,"c":[{"id":"daily_burst","w":13.1}],"sum":null},{"r":"huamidev/GestaltX","s":47,"l":"medium","st":6665,"c":[{"id":"dev_activity","w":12.5},{"id":"fork_ratio","w":34.3}],"sum":"2361 форков на 6665 звёзд за окно (35%)."},{"r":"janestreet/agent_skills","s":53,"l":"medium","st":7255,"c":[{"id":"dev_activity","w":53.3}],"sum":"На 7255 звёзд сверх обычного темпа за 29 дн. пришлось 6 issues, 7 PR, 2 коммитов."},{"r":"microsoft/vscode","s":13,"l":"low","st":2279,"c":[{"id":"daily_burst","w":12.9}],"sum":null},{"r":"ollama/ollama","s":0,"l":"low","st":4220,"c":[],"sum":null},{"r":"sherlock-project/sherlock","s":96,"l":"critical","st":16606,"c":[{"id":"daily_burst","w":54.5},{"id":"dev_activity","w":41.0}],"sum":"Самый резкий день 2026-11-05: 1413 звёзд при обычных 77 в день (x18), таких дней в окне: 7."},{"r":"sindresorhus/awesome","s":0,"l":"low","st":17933,"c":[],"sum":null},{"r":"spring-projects/spring-boot","s":20,"l":"low","st":433,"c":[{"id":"daily_burst","w":20.2}],"sum":"Самый резкий день 2026-11-11: 79 звёзд при обычных 8.5 в день (x9.3), таких дней в окне: 0."},{"r":"torvalds/linux","s":0,"l":"low","st":4413,"c":[],"sum":null}]
+;
+const GROUPS=[
+  ["Заведомо подозрительные",["Minireel/HGhub","deepseek-ai/DeepInfer","janestreet/agent_skills","huamidev/GestaltX","Adkid-Zephyr/anti-defensive-writing-Skill"]],
+  ["Органические с вирусной волной",["sherlock-project/sherlock","dockur/windows"]],
+  ["Органические",["spring-projects/spring-boot","facebook/react","microsoft/vscode","torvalds/linux","ollama/ollama","sindresorhus/awesome","donnemartin/system-design-primer","codecrafters-io/build-your-own-x","NotRexed/Hookshot"]]];
+const COLORS={daily_burst:"var(--c-daily)",dev_activity:"var(--c-dev)",fork_ratio:"var(--c-fork)"};
+const LEVEL={low:"низкий",medium:"средний",high:"высокий",critical:"критичный"};
+const by=Object.fromEntries(DATA.map(d=>[d.r,d]));
+const root=document.getElementById("chart");
+const fmt=n=>n.toLocaleString("ru-RU");
+function el(tag,attrs,...kids){const e=document.createElement(tag);for(const[k,v]of Object.entries(attrs||{}))e.setAttribute(k,v);for(const c of kids)if(c!=null)e.append(c);return e;}
+for(const[title,names]of GROUPS){
+  root.append(el("div",{class:"group"},title));
+  for(const n of names){const d=by[n]; if(!d) continue;
+    const sumW=d.c.reduce((a,c)=>a+c.w,0)||1;
+    const track=el("div",{class:"track",role:"img","aria-label":`${n}: score ${d.s}`});
+    for(const c of d.c){const seg=el("div",{class:"seg",title:`${c.id}: ${c.w.toFixed(1)}`});
+      seg.style.width=(d.s*c.w/sumW)+"%"; seg.style.background=COLORS[c.id]||"var(--muted)"; track.append(seg);}
+    const name=el("div",{class:"name"},el("a",{href:"https://github.com/"+n,target:"_blank",rel:"noopener"},n),el("small",{},fmt(d.st)+" звёзд за 30 дней"+(d.sum?" · "+d.sum:"")));
+    const score=el("div",{class:"score mono"},String(d.s),el("span",{class:"pill",style:`color:var(--${d.l})`},LEVEL[d.l]));
+    root.append(el("div",{class:"row"},name,track,score));}}
+const axis=el("div",{class:"axis"},el("div"),el("div"),el("div"));
+for(const t of[0,30,60,85,100]){const b=el("b",{class:"mono"},String(t));b.style.left=t+"%";axis.children[1].append(b);}
+root.append(axis);
+</script>
+
+</body>
+</html>

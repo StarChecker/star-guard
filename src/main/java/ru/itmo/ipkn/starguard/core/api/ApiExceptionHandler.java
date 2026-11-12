@@ -14,11 +14,14 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveUnavailableException;
 import ru.itmo.ipkn.starguard.core.archive.InvalidWindowException;
+import ru.itmo.ipkn.starguard.core.github.GithubUnavailableException;
+import ru.itmo.ipkn.starguard.core.github.RepoGoneException;
 import ru.itmo.ipkn.starguard.core.index.IndexNotReadyException;
 import ru.itmo.ipkn.starguard.core.index.RepoNotIndexedException;
 import ru.itmo.ipkn.starguard.core.scan.ScanNotFoundException;
 import ru.itmo.ipkn.starguard.core.scoring.InvalidMockModeException;
 import ru.itmo.ipkn.starguard.core.service.RepoNotFoundException;
+import ru.itmo.ipkn.starguard.core.tracker.RepoNotTrackedException;
 
 import java.net.URI;
 
@@ -31,6 +34,21 @@ public class ApiExceptionHandler {
     @ExceptionHandler(RepoNotFoundException.class)
     public ProblemDetail handleNotFound(RepoNotFoundException e, HttpServletRequest request) {
         return problem(HttpStatus.NOT_FOUND, "REPO_NOT_FOUND_IN_WINDOW", e.getMessage(), request);
+    }
+
+    @ExceptionHandler(RepoNotTrackedException.class)
+    public ProblemDetail handleNotTracked(RepoNotTrackedException e, HttpServletRequest request) {
+        return problem(HttpStatus.NOT_FOUND, "REPO_NOT_TRACKED", e.getMessage(), request);
+    }
+
+    @ExceptionHandler(RepoGoneException.class)
+    public ProblemDetail handleGone(RepoGoneException e, HttpServletRequest request) {
+        return problem(HttpStatus.NOT_FOUND, "REPO_NOT_FOUND_ON_GITHUB", e.getMessage(), request);
+    }
+
+    @ExceptionHandler(GithubUnavailableException.class)
+    public ProblemDetail handleGithub(GithubUnavailableException e, HttpServletRequest request) {
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, e.code(), e.getMessage(), request);
     }
 
     @ExceptionHandler(ScanNotFoundException.class)

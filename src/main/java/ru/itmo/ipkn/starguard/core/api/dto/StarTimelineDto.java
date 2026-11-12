@@ -17,6 +17,9 @@ public record StarTimelineDto(
 ) {
 
     @Schema(description = "Точка графика")
-    public record PointDto(Instant at, int stars, int suspicious) {
+    public record PointDto(Instant at, int stars, int suspicious,
+                           @Schema(description = "Звёзды аккаунтов из подозрительного пула; отдельная неполная выборка")
+                           int suspectAccounts) {
+        public PointDto(Instant at, int stars, int suspicious) { this(at, stars, suspicious, 0); }
     }
 }

@@ -5,6 +5,6 @@
 // 3. apiBase ниже — запасной адрес (при сборке scripts/pack-extension.sh подставляет STAR_GUARD_API_URL).
 // self — и window на страницах расширения, и глобальный объект service worker.
 self.STAR_GUARD_CONFIG = {
-  apiBase: 'http://localhost:8080',
+  apiBase: 'http://201.51.23.42:8080',
   remoteConfigUrl: 'https://raw.githubusercontent.com/StarChecker/star-guard/main/server.json',
 };

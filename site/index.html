@@ -26,6 +26,7 @@
 <main>
   <!-- Первый экран -->
   <section class="hero">
+    <div class="sky" id="sky" aria-hidden="true"></div>
     <div class="hero-text">
       <div class="labels">
         <span class="label l-violet"><span class="dot"></span>ИТМО · DevDays Fall 2026</span>
@@ -63,15 +64,18 @@
       </div>
     </div>
 
-    <div class="repo-card" aria-hidden="true">
-      <div class="owl-big" data-sprite="owl"></div>
+    <div class="repo-card">
+      <button class="owl-big" type="button" id="owlBtn" title="Погладить сову" aria-label="Сова Star Guard — нажмите">
+        <canvas id="owl" width="140" height="126"></canvas>
+        <span class="bubble" id="owlBubble" aria-hidden="true">уху!</span>
+      </button>
       <div class="rc-top">
         <span class="rc-name">owner / suspicious-repo</span>
-        <div class="starbtn"><span><svg viewBox="0 0 16 16"><use href="#star"/></svg>Star</span><span>2 113</span></div>
+        <div class="starbtn"><span><svg viewBox="0 0 16 16"><use href="#star"/></svg>Star</span><span id="starCount">2 113</span></div>
       </div>
-      <div class="contrib" id="contrib"></div>
+      <div class="contrib-wrap" aria-hidden="true"><div class="contrib" id="contrib"></div><div class="scan"></div></div>
       <div class="legend"><span>активность звёзд · 26 недель</span><span class="hotmark">■ всплеск</span></div>
-      <div class="badge"><span>star-guard</span><span>score 78 · high</span></div>
+      <div class="badge" id="heroBadge"><span>star-guard</span><span>score <b id="badgeScore">—</b> · <b id="badgeLevel">…</b></span></div>
     </div>
   </section>
 

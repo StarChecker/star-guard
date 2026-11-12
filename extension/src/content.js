@@ -5,6 +5,7 @@
   'use strict';
 
   const UI = window.StarGuardUI;
+  const EASTER = window.StarGuardEaster;
   const MARK = 'data-star-guard';
   const RESERVED = new Set([
     'about', 'account', 'apps', 'codespaces', 'collections', 'contact', 'customer-stories', 'dashboard',
@@ -21,8 +22,8 @@
   let previewRequested = null; // для какого репозитория уже запрошен preview
   let settings = { hours: 6, listDots: true };
   let scanTimer = null;
-  let floatingOpen = false;   // плавающая панель открыта значком
-  let floatingClosed = false; // пользователь закрыл панель без значка
+  let expanded = false;       // карточка развёрнута (запоминается между страницами)
+  let floatingClosed = false; // пользователь закрыл плавающую панель
   const listCache = new Map();
 
   function send(message) {
@@ -170,8 +171,18 @@
     onScanDay: () => startScan(24),
     onRetry: () => { send({ type: 'clearCache' }).then(() => loadRepo(currentRepo)); },
     onOpenOptions: () => window.open(chrome.runtime.getURL('options.html'), '_blank'),
-    onClose: () => { floatingOpen = false; floatingClosed = true; renderRepo(); },
+    onClose: () => { floatingClosed = true; renderRepo(); },
+    onToggle: () => { setExpanded(!expanded); renderRepo(); },
   };
+
+  function setExpanded(value) {
+    expanded = value;
+    try {
+      chrome.storage.local.set({ cardExpanded: value });
+    } catch (ignored) {
+      // контекст расширения устарел — состояние просто не запомнится
+    }
+  }
 
   // ---------- встраивание на странице репозитория ----------
 
@@ -258,21 +269,18 @@
           startScan();
           return;
         }
-        if (card) {
-          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } else if (floating) {
-          floatingOpen = !floatingOpen;
-          renderRepo();
-        }
+        if (!expanded) setExpanded(true);
+        floatingClosed = false;
+        renderRepo();
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
     }
     if (card) {
-      UI.renderCard(card.shadowRoot, withPreview(), actions);
+      UI.renderCard(card.shadowRoot, withPreview(), actions, { collapsed: !expanded });
     }
     if (floating) {
-      const show = badge ? floatingOpen : !floatingClosed;
-      floating.style.display = show ? 'block' : 'none';
-      UI.renderCard(floating.shadowRoot, withPreview(), actions, { floating: true });
+      floating.style.display = floatingClosed ? 'none' : 'block';
+      UI.renderCard(floating.shadowRoot, withPreview(), actions, { floating: true, collapsed: !expanded });
     }
   }
 
@@ -360,15 +368,20 @@
       clearTimeout(scanTimer);
       if (repo !== currentRepo) {
         removeRepoUi();
+        if (EASTER) EASTER.stop();
         repoPreview = null;
         previewRequested = null;
-        floatingOpen = false;
         floatingClosed = false;
         currentRepo = repo;
-        if (repo) loadRepo(repo);
+        if (EASTER && EASTER.isHome(repo)) {
+          // пасхалка: на странице самого Star Guard оценки нет — только звёзды
+          EASTER.start();
+        } else if (repo) {
+          loadRepo(repo);
+        }
       }
     }
-    if (currentRepo) {
+    if (currentRepo && !(EASTER && EASTER.isHome(currentRepo))) {
       const missing = !document.querySelector(`[${MARK}="badge"]`) || !document.querySelector(`[${MARK}="card"], [${MARK}="floating"]`);
       if (missing) renderRepo();
     }
@@ -384,6 +397,11 @@
   async function init() {
     const response = await send({ type: 'settings' });
     if (response.ok) settings = response.data;
+    try {
+      expanded = (await chrome.storage.local.get({ cardExpanded: false })).cardExpanded === true;
+    } catch (ignored) {
+      expanded = false;
+    }
     ['turbo:load', 'turbo:render', 'pjax:end', 'popstate'].forEach((event) =>
       document.addEventListener(event, () => setTimeout(onPage, 50)));
     window.addEventListener('popstate', () => setTimeout(onPage, 50));
@@ -393,7 +411,7 @@
       const fresh = await send({ type: 'settings' });
       if (fresh.ok) settings = fresh.data;
       listCache.clear();
-      if (currentRepo) loadRepo(currentRepo);
+      if (currentRepo && !(EASTER && EASTER.isHome(currentRepo))) loadRepo(currentRepo);
     });
     onPage();
   }

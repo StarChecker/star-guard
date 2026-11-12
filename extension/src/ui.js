@@ -135,6 +135,24 @@ details.evidence[open] summary::before { content: '▾ '; }
 .skeleton { background: var(--sg-border-muted); border-radius: 6px; animation: sg-pulse 1.2s ease-in-out infinite; }
 @keyframes sg-pulse { 50% { opacity: .5; } }
 
+/* свёрнутая карточка */
+.mini { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mini .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent); }
+.mini .score { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mini .score small { font-size: 11px; font-weight: 400; color: var(--sg-muted); }
+.mini .text { flex: 1; min-width: 0; color: var(--sg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini .progress { flex: 1; margin: 0; }
+.sg button.toggle {
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 10px; padding: 5px 12px;
+  color: var(--sg-accent); border-color: color-mix(in srgb, var(--sg-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--sg-accent) 8%, transparent);
+}
+.sg button.toggle:hover { border-color: var(--sg-accent); background: color-mix(in srgb, var(--sg-accent) 14%, transparent); }
+.sg button.toggle .chev { transition: transform .2s; }
+.sg button.collapse { padding: 0 8px; margin-left: 8px; color: var(--sg-accent); }
+.card.collapsed .head { margin-bottom: 8px; }
+.card.floating.collapsed { width: 300px; }
+
 /* значок у кнопки Star */
 .badge {
   display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px;
@@ -379,11 +397,50 @@ details.evidence[open] summary::before { content: '▾ '; }
     }
   }
 
-  function header(hours, floating, onClose) {
+  function header(hours, floating, onClose, onCollapse) {
     return h('div', { class: 'head' },
       h('h2', {}, logo(), 'Star Guard'),
       h('span', { class: 'window' }, hours ? `за ${windowLabel(hours)}` : '',
+        onCollapse ? h('button', { class: 'collapse', title: 'Свернуть', 'aria-label': 'Свернуть', onclick: onCollapse }, 'Свернуть ▴') : null,
         floating && onClose ? h('button', { style: 'margin-left: 8px; padding: 0 6px', title: 'Скрыть', onclick: onClose }, '×') : null));
+  }
+
+  /** Одна строка свёрнутой карточки: итог или состояние. */
+  function miniView(state, actions) {
+    const text = (value) => h('span', { class: 'text', title: value }, value);
+    switch (state.kind) {
+      case 'report': {
+        const report = state.data;
+        const level = levelOf(report);
+        const score = report.score.insufficient_data ? '—' : String(report.score.score);
+        return h('div', { class: 'mini' },
+          h('span', { class: 'dot', style: `background: ${level.color}; color: ${level.color}` }),
+          h('span', { class: 'score' }, score, h('small', {}, '/100')),
+          h('span', { class: 'pill', style: `color: ${level.color}` }, level.label),
+          text(report.score.verdict || ''));
+      }
+      case 'loading':
+        return h('div', { class: 'mini' }, h('div', { class: 'skeleton', style: 'height: 14px; flex: 1' }));
+      case 'not_indexed':
+        return h('div', { class: 'mini' }, text('Готовой оценки нет'),
+          h('button', { class: 'primary', onclick: actions.onScan }, 'Проверить'));
+      case 'scanning': {
+        const pct = state.total ? Math.round((state.done / state.total) * 100) : 0;
+        return h('div', { class: 'mini' }, h('span', { class: 'text', style: 'flex: none' }, 'Проверяем…'),
+          h('div', { class: 'progress' }, h('span', { style: `width: ${Math.max(4, pct)}%` })));
+      }
+      case 'no_data':
+        return h('div', { class: 'mini' }, text(`Нет событий за ${windowLabel(state.hours)}`));
+      case 'gone':
+        return h('div', { class: 'mini' }, text('Репозитория нет на GitHub'));
+      case 'index_not_ready':
+        return h('div', { class: 'mini' }, text('Индекс прогревается'), h('button', { onclick: actions.onRetry }, 'Повторить'));
+      case 'error':
+      default:
+        return h('div', { class: 'mini' },
+          text(state.code === 'API_UNREACHABLE' ? 'Сервер недоступен' : 'Оценка недоступна'),
+          h('button', { onclick: actions.onRetry }, 'Повторить'));
+    }
   }
 
   function reportView(report) {
@@ -512,8 +569,18 @@ details.evidence[open] summary::before { content: '▾ '; }
   function renderCard(shadowRoot, state, actions, options) {
     const opts = options || {};
     const hours = state.kind === 'report' ? state.data.window.hours : state.hours;
+    const toggle = actions.onToggle;
+    if (opts.collapsed && toggle) {
+      const card = h('div', { class: 'sg card collapsed' + (opts.floating ? ' floating' : '') },
+        header(hours, opts.floating, actions.onClose),
+        miniView(state, actions),
+        h('button', { class: 'toggle', 'aria-expanded': 'false', onclick: toggle },
+          state.kind === 'report' ? 'Показать разбор' : 'Подробнее', h('span', { class: 'chev' }, '▾')));
+      shadowRoot.replaceChildren(h('style', {}, STYLES), card);
+      return;
+    }
     const card = h('div', { class: 'sg card' + (opts.floating ? ' floating' : '') },
-      header(hours, opts.floating, actions.onClose),
+      header(hours, opts.floating, actions.onClose, toggle),
       ...(state.kind === 'report' ? reportView(state.data) : stateView(state, actions)));
     shadowRoot.replaceChildren(h('style', {}, STYLES), card);
   }

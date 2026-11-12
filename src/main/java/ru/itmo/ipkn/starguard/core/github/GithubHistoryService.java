@@ -137,6 +137,9 @@ public class GithubHistoryService {
             pagesPlanned = (int) Math.max(1, Math.ceil(Math.min(stargazerCount, properties.maxStars()) / (double) PAGE)) + 1;
             Map<String, Object> stargazers = Graphql.map(repository, "stargazers");
             List<Object> edges = Graphql.list(stargazers, "edges");
+            if (before == null && edges.isEmpty() && stargazerCount > 0) {
+                throw new StarsHiddenException(repo, stargazerCount);
+            }
             for (int i = edges.size() - 1; i >= 0; i--) {
                 if (edges.get(i) instanceof Map<?, ?> edge) {
                     @SuppressWarnings("unchecked")

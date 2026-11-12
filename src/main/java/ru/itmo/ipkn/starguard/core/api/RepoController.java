@@ -79,6 +79,7 @@ public class RepoController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Отчёт по репозиторию"),
             @ApiResponse(responseCode = "404", description = "Репозиторий удалён/скрыт или у него нет звёзд за период"),
+            @ApiResponse(responseCode = "422", description = "STARS_HIDDEN: GitHub скрывает список звёзд репозитория"),
             @ApiResponse(responseCode = "503", description = "Нет токена GitHub или GitHub API недоступен")
     })
     public RepoReportDto getRepoHistory(

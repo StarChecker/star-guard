@@ -95,6 +95,17 @@ class GithubHistoryServiceTest {
     }
 
     @Test
+    void hiddenStargazersAreReportedAsHiddenNotMissing() {
+        FakeGraphql graphql = new FakeGraphql().starsPage(null, List.of(), false, null, 8400);
+
+        assertThatThrownBy(() -> service(graphql, 3000).load(REPO, ArchiveProgress.NONE))
+                .isInstanceOfSatisfying(StarsHiddenException.class,
+                        e -> assertThat(e.stargazerCount()).isEqualTo(8400))
+                .hasMessageContaining("acme/tool");
+        assertThat(graphql.starPages).isEqualTo(1);
+    }
+
+    @Test
     void tokenIsRequired() {
         GithubHistoryService service = new GithubHistoryService(new FakeGraphql(),
                 GithubProperties.defaults(), GithubHistoryProperties.defaults(), archive(ArchiveProperties.Mode.HTTP),

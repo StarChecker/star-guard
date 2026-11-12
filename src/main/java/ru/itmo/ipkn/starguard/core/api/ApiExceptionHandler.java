@@ -16,6 +16,7 @@ import ru.itmo.ipkn.starguard.core.archive.ArchiveUnavailableException;
 import ru.itmo.ipkn.starguard.core.archive.InvalidWindowException;
 import ru.itmo.ipkn.starguard.core.github.GithubUnavailableException;
 import ru.itmo.ipkn.starguard.core.github.RepoGoneException;
+import ru.itmo.ipkn.starguard.core.github.StarsHiddenException;
 import ru.itmo.ipkn.starguard.core.index.IndexNotReadyException;
 import ru.itmo.ipkn.starguard.core.index.RepoNotIndexedException;
 import ru.itmo.ipkn.starguard.core.scan.ScanNotFoundException;
@@ -38,6 +39,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(RepoGoneException.class)
     public ProblemDetail handleGone(RepoGoneException e, HttpServletRequest request) {
         return problem(HttpStatus.NOT_FOUND, "REPO_NOT_FOUND_ON_GITHUB", e.getMessage(), request);
+    }
+
+    @ExceptionHandler(StarsHiddenException.class)
+    public ProblemDetail handleStarsHidden(StarsHiddenException e, HttpServletRequest request) {
+        return problem(HttpStatus.UNPROCESSABLE_CONTENT, StarsHiddenException.CODE, e.getMessage(), request);
     }
 
     @ExceptionHandler(GithubUnavailableException.class)

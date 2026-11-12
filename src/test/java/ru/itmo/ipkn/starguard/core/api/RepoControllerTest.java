@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -43,7 +44,7 @@ class RepoControllerTest {
 
     @Test
     void returnsSnakeCaseReport() throws Exception {
-        when(reportService.getReport(any(), any(), any(), any())).thenReturn(sampleReport());
+        when(reportService.getReport(any(), any(), any(), any(), anyBoolean(), any())).thenReturn(sampleReport());
 
         mockMvc.perform(get("/api/v1/repos/demo/star-guard"))
                 .andExpect(status().isOk())
@@ -62,7 +63,7 @@ class RepoControllerTest {
     @Test
     void returns404WhenRepoHasNoEventsInWindow() throws Exception {
         RepoRef repo = new RepoRef("demo", "star-guard");
-        when(reportService.getReport(any(), any(), any(), any()))
+        when(reportService.getReport(any(), any(), any(), any(), anyBoolean(), any()))
                 .thenThrow(new RepoNotFoundException(repo, window()));
 
         mockMvc.perform(get("/api/v1/repos/demo/star-guard"))
@@ -73,7 +74,7 @@ class RepoControllerTest {
     @Test
     void returns404WhenRepoIsNotIndexed() throws Exception {
         RepoRef repo = new RepoRef("demo", "star-guard");
-        when(reportService.getReport(any(), any(), any(), any()))
+        when(reportService.getReport(any(), any(), any(), any(), anyBoolean(), any()))
                 .thenThrow(new RepoNotIndexedException(repo, window()));
 
         mockMvc.perform(get("/api/v1/repos/demo/star-guard"))
@@ -83,7 +84,7 @@ class RepoControllerTest {
 
     @Test
     void returns503WhenIndexIsNotReady() throws Exception {
-        when(reportService.getReport(any(), any(), any(), any()))
+        when(reportService.getReport(any(), any(), any(), any(), anyBoolean(), any()))
                 .thenThrow(new IndexNotReadyException());
 
         mockMvc.perform(get("/api/v1/repos/demo/star-guard"))
@@ -101,6 +102,12 @@ class RepoControllerTest {
     @Test
     void returns400ForOutOfRangeHours() throws Exception {
         mockMvc.perform(get("/api/v1/repos/demo/star-guard").param("hours", "0"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void returns400ForTooLongDays() throws Exception {
+        mockMvc.perform(get("/api/v1/repos/demo/star-guard").param("days", "3651"))
                 .andExpect(status().isBadRequest());
     }
 

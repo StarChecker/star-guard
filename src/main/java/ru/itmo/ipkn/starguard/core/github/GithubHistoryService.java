@@ -46,6 +46,12 @@ public class GithubHistoryService {
     private static final Logger log = LoggerFactory.getLogger(GithubHistoryService.class);
     private static final int MAX_HISTORY_PAGES = 100;
     private static final int DAYS_PER_PAGE = 210;
+    /** Окно анализа по умолчанию, если период не задан (совпадает с прежним max-days). */
+    private static final int DEFAULT_ANALYSIS_DAYS = 30;
+    /** Сколько дней истории до начала окна нужно проверкам для базовой линии. */
+    private static final int BASELINE_DAYS = 67;   // 60 (dev-activity) + 7 (min baseline)
+    /** Трекер хранит внутридневные снимки ограниченное время — для старых окон их не подмешиваем. */
+    private static final Duration INTRADAY_RELEVANCE = Duration.ofHours(30);
     private static final int NOT_FOUND = 404;
     private static final int UNAUTHORIZED = 401;
     private static final int FORBIDDEN = 403;
@@ -53,7 +59,7 @@ public class GithubHistoryService {
     private static final long RETRY_DELAY_MILLIS = 500;
 
     private static final String REPO_QUERY = """
-            query($owner: String!, $name: String!, $since: GitTimestamp!) {
+            query($owner: String!, $name: String!, $since: GitTimestamp!, $until: GitTimestamp!) {
               repository(owner: $owner, name: $name) {
                 id
                 createdAt
@@ -77,7 +83,7 @@ public class GithubHistoryService {
                 defaultBranchRef {
                   target {
                     ... on Commit {
-                      history(since: $since, first: 100) {
+                      history(since: $since, until: $until, first: 100) {
                         totalCount
                         nodes { author { user { login } } }
                       }
@@ -139,38 +145,67 @@ public class GithubHistoryService {
     }
 
     public RepoData load(RepoRef repo, ArchiveProgress progress) {
-        return load(repo, null, progress);
+        return load(repo, HistoryPeriod.days(null), progress);
     }
 
     public RepoData load(RepoRef repo, Integer requestedDays, ArchiveProgress progress) {
+        return load(repo, HistoryPeriod.days(requestedDays), progress);
+    }
+
+    /**
+     * Отчёт по истории GitHub за период: последние {@code days} дней, заканчивающиеся
+     * датой {@code to} (включительно), либо вся история репозитория ({@code all}).
+     */
+    public RepoData load(RepoRef repo, HistoryPeriod requested, ArchiveProgress progress) {
         if (githubProperties.token().isEmpty()) {
             throw new GithubUnavailableException("GITHUB_TOKEN_REQUIRED",
                     "GitHub token is required for repository history (set GITHUB_TOKEN)");
         }
-        int days = requestedDays == null ? properties.maxDays() : requestedDays;
-        if (days < 1 || days > properties.maxDays()) {
+        HistoryPeriod period = requested == null ? HistoryPeriod.days(null) : requested;
+        int days = period.all()
+                ? 0
+                : period.days() == null
+                        ? Math.min(properties.maxDays(), DEFAULT_ANALYSIS_DAYS)
+                        : period.days();
+        if (!period.all() && (days < 1 || days > properties.maxDays())) {
             throw new InvalidWindowException("days must be within [1, %d]".formatted(properties.maxDays()));
         }
+
         Instant now = clock.instant();
         LocalDate today = now.atZone(ZoneOffset.UTC).toLocalDate();
-        Instant from = today.minusDays(days - 1L).atStartOfDay(ZoneOffset.UTC).toInstant();
-        Instant to = now.truncatedTo(ChronoUnit.HOURS).plus(Duration.ofHours(1));
-        TimeWindow window = new TimeWindow(from, to, (int) Duration.between(from, to).toHours());
+        LocalDate endDay = period.to() == null ? today : period.to();
+        if (endDay.isAfter(today)) {
+            throw new InvalidWindowException("to must not be in the future");
+        }
+        Instant to = endDay.equals(today)
+                ? now.truncatedTo(ChronoUnit.HOURS).plus(Duration.ofHours(1))
+                : endDay.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+        Instant queryFrom = period.all()
+                ? Instant.EPOCH
+                : endDay.minusDays(days - 1L).atStartOfDay(ZoneOffset.UTC).toInstant();
 
-        String key = repo.fullName().toLowerCase(Locale.ROOT) + "|" + days + "|" + today;
+        String key = repo.fullName().toLowerCase(Locale.ROOT) + "|"
+                + (period.all() ? "all" : days) + "|" + endDay + "|" + today;
         GithubSignals signals = cache.getIfPresent(key);
         if (signals == null) {
-            signals = fetch(repo, window, today, progress);
+            signals = fetch(repo, queryFrom, to, endDay, today, period.all() ? null : days, now, progress);
             cache.put(key, signals);
         }
         progress.hourDone(3, 3);
 
-        return toRepoData(repo, window, withIntraday(repo, signals), now);
+        TimeWindow window = new TimeWindow(
+                signals.activity().from(), signals.activity().to(),
+                (int) Duration.between(signals.activity().from(), signals.activity().to()).toHours());
+        return toRepoData(repo, window, withIntraday(repo, signals, now), now);
     }
 
-    private GithubSignals withIntraday(RepoRef repo, GithubSignals signals) {
+    private GithubSignals withIntraday(RepoRef repo, GithubSignals signals, Instant now) {
         IntradaySource tracker = intradaySource.getIfAvailable();
         if (tracker == null || signals.nodeId() == null) {
+            return signals;
+        }
+        if (signals.activity().to().isBefore(now.minus(INTRADAY_RELEVANCE))) {
+            // Внутридневная история трекера не покрывает старые окна — не подмешиваем её.
             return signals;
         }
         try {
@@ -183,11 +218,20 @@ public class GithubHistoryService {
         }
     }
 
-    private GithubSignals fetch(RepoRef repo, TimeWindow window, LocalDate today, ArchiveProgress progress) {
+    private GithubSignals fetch(
+            RepoRef repo,
+            Instant queryFrom,
+            Instant queryTo,
+            LocalDate endDay,
+            LocalDate today,
+            Integer days,
+            Instant now,
+            ArchiveProgress progress) {
         Map<String, Object> variables = new HashMap<>();
         variables.put("owner", repo.owner());
         variables.put("name", repo.name());
-        variables.put("since", window.from().toString());
+        variables.put("since", queryFrom.toString());
+        variables.put("until", queryTo.toString());
         Map<String, Object> data = query(repo, REPO_QUERY, variables);
         Map<String, Object> repository = Graphql.map(data, "repository");
         progress.hourDone(1, 3);
@@ -197,22 +241,34 @@ public class GithubHistoryService {
             throw new GithubUnavailableException("GITHUB_UNAVAILABLE", "GitHub returned no repository creation date");
         }
         LocalDate createdDay = createdAt.atZone(ZoneOffset.UTC).toLocalDate();
+        if (createdDay.isAfter(endDay)) {
+            throw new InvalidWindowException("repository was created after the selected period");
+        }
+        // Запрошенное окно сохраняем как есть (месяц — это месяц), даже если репозиторий
+        // моложе; дневная история при этом начинается с даты создания.
+        LocalDate windowFromDay = days == null ? createdDay : endDay.minusDays(days - 1L);
+        Instant windowFrom = windowFromDay.atStartOfDay(ZoneOffset.UTC).toInstant();
+        TimeWindow window = new TimeWindow(
+                windowFrom, queryTo, (int) Duration.between(windowFrom, queryTo).toHours());
+
+        // Для проверок грузим ещё и базовую линию до начала окна, но не раньше создания репозитория.
         LocalDate historyStart = today.minusDays(properties.historyDays() - 1L);
-        LocalDate firstDay = createdDay.isAfter(historyStart) ? createdDay : historyStart;
-        int[] daily = dailyStars(repo, firstDay, today);
+        LocalDate baselineStart = windowFromDay.minusDays(BASELINE_DAYS);
+        LocalDate earliest = historyStart.isBefore(baselineStart) ? historyStart : baselineStart;
+        LocalDate firstDay = createdDay.isAfter(earliest) ? createdDay : earliest;
+        int[] daily = dailyStars(repo, firstDay, endDay, today);
         progress.hourDone(2, 3);
 
-        LocalDate windowStart = window.from().atZone(ZoneOffset.UTC).toLocalDate();
         int windowStars = 0;
         for (int i = 0; i < daily.length; i++) {
-            if (!firstDay.plusDays(i).isBefore(windowStart)) {
+            if (!firstDay.plusDays(i).isBefore(windowFromDay)) {
                 windowStars += daily[i];
             }
         }
 
-        int[] forks = countInWindow(repo, repository, "forks", createdAt, window.from());
-        int[] issues = countInWindow(repo, repository, "issues", createdAt, window.from());
-        int[] pulls = countInWindow(repo, repository, "pullRequests", createdAt, window.from());
+        int[] forks = countInWindow(repo, repository, "forks", createdAt, windowFrom, queryTo, now);
+        int[] issues = countInWindow(repo, repository, "issues", createdAt, windowFrom, queryTo, now);
+        int[] pulls = countInWindow(repo, repository, "pullRequests", createdAt, windowFrom, queryTo, now);
         Map<String, Object> history = Graphql.map(repository, "defaultBranchRef", "target", "history");
         Set<String> authors = new HashSet<>();
         for (Object node : Graphql.list(history, "nodes")) {
@@ -242,10 +298,14 @@ public class GithubHistoryService {
                 null);
     }
 
-    private int[] dailyStars(RepoRef repo, LocalDate firstDay, LocalDate today) {
+    /**
+     * Дневная история звёзд от {@code firstDay} до {@code endDay}. Страницы отдаются
+     * от новых недель к старым, поэтому их число считаем от сегодняшнего дня.
+     */
+    private int[] dailyStars(RepoRef repo, LocalDate firstDay, LocalDate endDay, LocalDate today) {
         Map<LocalDate, Integer> byDay = new HashMap<>();
-        long span = Duration.between(firstDay.atStartOfDay(), today.atStartOfDay()).toDays();
-        int pages = Math.min(MAX_HISTORY_PAGES, (int) Math.ceil((span + 7.0) / DAYS_PER_PAGE));
+        long pagesSpan = Duration.between(firstDay.atStartOfDay(), today.atStartOfDay()).toDays();
+        int pages = Math.min(MAX_HISTORY_PAGES, (int) Math.ceil((pagesSpan + 7.0) / DAYS_PER_PAGE));
         for (int page = 1; page <= Math.max(1, pages); page++) {
             ResponseEntity<List<StarHistoryWeek>> response = history(repo, page);
             List<StarHistoryWeek> weeks = response.getBody() == null ? List.of() : response.getBody();
@@ -265,7 +325,8 @@ public class GithubHistoryService {
                 break;
             }
         }
-        int[] daily = new int[(int) span + 1];
+        int span = (int) Duration.between(firstDay.atStartOfDay(), endDay.atStartOfDay()).toDays();
+        int[] daily = new int[Math.max(1, span + 1)];
         for (int i = 0; i < daily.length; i++) {
             daily[i] = byDay.getOrDefault(firstDay.plusDays(i), 0);
         }
@@ -273,9 +334,16 @@ public class GithubHistoryService {
     }
 
     private int[] countInWindow(
-            RepoRef repo, Map<String, Object> repository, String connection, Instant createdAt, Instant from) {
+            RepoRef repo,
+            Map<String, Object> repository,
+            String connection,
+            Instant createdAt,
+            Instant from,
+            Instant to,
+            Instant now) {
         Map<String, Object> first = Graphql.map(repository, connection);
-        if (!createdAt.isBefore(from)) {
+        if (!createdAt.isBefore(from) && !to.isBefore(now)) {
+            // Репозиторий создан внутри окна, которое заканчивается сейчас: все элементы попадают в окно.
             return new int[]{(int) Graphql.number(first, "totalCount", 0), 0};
         }
         int count = 0;
@@ -283,7 +351,13 @@ public class GithubHistoryService {
         for (int loaded = 1; ; loaded++) {
             for (Object node : Graphql.list(page, "nodes")) {
                 Instant at = Graphql.instant(asMap(node), "createdAt");
-                if (at == null || at.isBefore(from)) {
+                if (at == null) {
+                    continue;
+                }
+                if (!at.isBefore(to)) {
+                    continue;   // событие позже конца исторического окна
+                }
+                if (at.isBefore(from)) {
                     return new int[]{count, 0};
                 }
                 count++;

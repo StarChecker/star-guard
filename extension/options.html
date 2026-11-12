@@ -11,8 +11,11 @@
     p.lead { color: var(--fgColor-muted); margin: 0 0 24px; }
     label { display: block; font-weight: 600; margin: 16px 0 6px; }
     .hint { color: var(--fgColor-muted); font-size: 12px; margin-top: 4px; }
-    input[type=url], select { width: 100%; box-sizing: border-box; padding: 5px 12px; font: inherit; border-radius: 6px;
+    .hint.bad { color: var(--fgColor-danger); }
+    input[type=url], input[type=number], input[type=date], select { width: 100%; box-sizing: border-box; padding: 5px 12px; font: inherit; border-radius: 6px;
            border: 1px solid var(--borderColor-default); background: var(--bgColor-muted); color: inherit; }
+    input[type=number], input[type=date] { width: 160px; }
+    #customPeriod[hidden] { display: none; }
     .row { display: flex; gap: 8px; align-items: center; margin-top: 16px; }
     button { font: inherit; font-weight: 500; padding: 5px 16px; border-radius: 6px; cursor: pointer;
              border: 1px solid var(--borderColor-default); background: var(--bgColor-muted); color: inherit; }
@@ -38,14 +41,28 @@
       возьмётся из <a id="remoteLink" target="_blank" rel="noopener">server.json</a> в репозитории и обновится сам, когда его поменяют.
       Свой адрес перекрывает его; для внешнего адреса браузер попросит разрешение.</div>
 
-    <label for="hours">Окно анализа</label>
-    <select id="hours">
-      <option value="3">3 часа</option>
-      <option value="6">6 часов</option>
-      <option value="12">12 часов</option>
-      <option value="24">24 часа</option>
+    <label for="period">Период анализа</label>
+    <select id="period">
+      <option value="h6">6 часов</option>
+      <option value="h12">12 часов</option>
+      <option value="h24">24 часа</option>
+      <option value="d7">неделя (7 дней)</option>
+      <option value="d30">месяц (30 дней)</option>
+      <option value="d90">квартал (90 дней)</option>
+      <option value="d180">пол года (180 дней)</option>
+      <option value="d365">год (365 дней)</option>
+      <option value="all">вся история репозитория</option>
+      <option value="custom">свой период…</option>
     </select>
-    <div class="hint">В режиме индекса сервер отвечает не больше чем за своё окно (по умолчанию 6 ч).</div>
+    <div class="hint">До 24 часов — GH Archive (индекс или прямой скан). Дни и месяцы — дневная история
+      звёзд GitHub, на сервере нужен GITHUB_TOKEN. «Вся история» считается от даты создания
+      репозитория. В карточке на GitHub доступны быстрые пресеты, свой период — только здесь.</div>
+
+    <div id="customPeriod" hidden>
+      <label for="customFrom">Показывать с даты</label>
+      <input id="customFrom" type="date">
+      <div class="hint" id="customHint">Выберите дату — посчитаем, сколько дней назад это было.</div>
+    </div>
 
     <label class="check"><input id="listDots" type="checkbox">
       <span>Показывать цветные точки рядом со звёздами в списках (Trending, поиск, звёзды пользователя)</span></label>
@@ -57,6 +74,7 @@
     </div>
   </main>
   <script src="src/config.js"></script>
+  <script src="src/period.js"></script>
   <script src="src/theme.js"></script>
   <script src="src/options.js"></script>
 </body>

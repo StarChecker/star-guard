@@ -2,6 +2,7 @@
 (function () {
   'use strict';
   const UI = window.StarGuardUI;
+  const Period = window.StarGuardPeriod;
   const root = document.getElementById('root');
   const shadow = root.attachShadow({ mode: 'open' });
   const REPO_RE = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
@@ -9,16 +10,32 @@
     'notifications', 'pulls', 'issues', 'sponsors', 'login', 'new', 'codespaces', 'features', 'users', 'stars']);
   let repo = null;
   let hours = 6;
+  let period = { kind: 'hours', hours: 6 };
 
   const send = (message) => new Promise((resolve) =>
     chrome.runtime.sendMessage(message, (response) => resolve(response || { ok: false, code: 'NO_RESPONSE' })));
 
   const actions = {
-    onScan: () => scan(hours),
-    onScanDay: () => scan(24),
+    onScan: () => scan(period),
+    onScanDay: () => scan({ kind: 'hours', hours: 24 }),
     onRetry: () => send({ type: 'clearCache' }).then(load),
     onOpenOptions: () => chrome.runtime.openOptionsPage(),
+    onPeriodChange: (next) => changePeriod(next),
   };
+
+  // Период из заголовка карточки — сохраняем в те же настройки, что и страница настроек.
+  async function changePeriod(value) {
+    const next = Period.normalize(value, hours);
+    if (Period.key(next) === Period.key(period)) return;
+    period = next;
+    hours = Period.indexHours(next, hours);
+    try {
+      await chrome.storage.sync.set({ period, hours });
+    } catch (ignored) {
+      // не сохранилось — период применится только в этом popup
+    }
+    load();
+  }
 
   let preview = null;
   let previewRequested = false;
@@ -38,34 +55,38 @@
   }
   let lastState = { kind: 'loading' };
 
-  function toState(response) {
-    if (response.ok) return { kind: 'report', data: response.data };
-    if (response.code === 'REPO_NOT_INDEXED') return { kind: 'not_indexed', hours };
-    if (response.code === 'REPO_NOT_FOUND_IN_WINDOW') return { kind: 'no_data', hours };
-    if (response.code === 'REPO_NOT_FOUND_ON_GITHUB') return { kind: 'gone', hours };
-    if (response.code === 'INDEX_NOT_READY') return { kind: 'index_not_ready', hours };
-    return { kind: 'error', hours, code: response.code, message: response.message, apiBase: response.apiBase };
+  function toState(response, scanPeriod) {
+    const label = scanPeriod || period;
+    if (response.ok) return { kind: 'report', data: response.data, period: label };
+    if (response.code === 'REPO_NOT_INDEXED') return { kind: 'not_indexed', period: label };
+    if (response.code === 'REPO_NOT_FOUND_IN_WINDOW') return { kind: 'no_data', period: label };
+    if (response.code === 'REPO_NOT_FOUND_ON_GITHUB') return { kind: 'gone', period: label };
+    if (response.code === 'INDEX_NOT_READY') return { kind: 'index_not_ready', period: label };
+    if (response.code === 'INVALID_REQUEST') return { kind: 'out_of_window', period: label, message: response.message };
+    return { kind: 'error', period: label, code: response.code, message: response.message, apiBase: response.apiBase };
   }
 
   async function load() {
-    render({ kind: 'loading', hours });
-    render(toState(await send({ type: 'report', repo, hours })));
+    render({ kind: 'loading', period });
+    render(toState(await send({ type: 'report', repo, period }), period));
   }
 
-  async function scan(scanHours) {
-    render({ kind: 'scanning', done: 0, total: scanHours, hours: scanHours });
-    const started = await send({ type: 'scanStart', repo, hours: scanHours });
-    if (!started.ok) return render(toState(started));
+  async function scan(requested) {
+    const scanPeriod = typeof requested === 'number'
+      ? { kind: 'hours', hours: Period.clampHours(requested, hours) }
+      : Period.normalize(requested || period, hours);
+    render({ kind: 'scanning', done: 0, total: scanPeriod.kind === 'hours' ? scanPeriod.hours : 0, period: scanPeriod });
+    const started = await send({ type: 'scanStart', repo, period: scanPeriod });
+    if (!started.ok) return render(toState(started, scanPeriod));
     const poll = async () => {
       const status = await send({ type: 'scanStatus', id: started.data.id });
-      if (!status.ok) return render(toState(status));
+      if (!status.ok) return render(toState(status, scanPeriod));
       const job = status.data;
-      if (job.status === 'done') return render({ kind: 'report', data: job.report });
+      if (job.status === 'done') return render({ kind: 'report', data: job.report, period: scanPeriod });
       if (job.status === 'failed') {
-        const failed = toState({ ok: false, code: job.error_code, message: job.error_message });
-        return render({ ...failed, hours: job.source === 'github' ? 720 : job.hours_total });
+        return render(toState({ ok: false, code: job.error_code, message: job.error_message }, scanPeriod));
       }
-      render({ kind: 'scanning', done: job.hours_done, total: job.hours_total, hours: job.hours_total, source: job.source });
+      render({ kind: 'scanning', done: job.hours_done, total: job.hours_total, period: scanPeriod, source: job.source });
       setTimeout(poll, 1500);
     };
     poll();
@@ -73,7 +94,10 @@
 
   async function init() {
     const settings = await send({ type: 'settings' });
-    if (settings.ok) hours = settings.data.hours;
+    if (settings.ok) {
+      hours = settings.data.hours;
+      period = settings.data.period || period;
+    }
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     try {
       const url = new URL(tab.url);

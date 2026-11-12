@@ -42,7 +42,9 @@ public class ScanController {
     public ResponseEntity<ScanDto> start(@Valid @RequestBody ScanRequest request) {
         ScanJob.Source source = request.source() == null ? null
                 : ScanJob.Source.valueOf(request.source().toUpperCase(Locale.ROOT));
-        ScanJob job = scanService.start(new RepoRef(request.owner(), request.name()), request.hours(), source);
+        ScanJob job = scanService.start(
+                new RepoRef(request.owner(), request.name()),
+                request.hours(), request.days(), request.to(), Boolean.TRUE.equals(request.all()), source);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(toDto(job));
     }
 

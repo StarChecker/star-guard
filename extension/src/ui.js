@@ -5,6 +5,7 @@
   'use strict';
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
+  const Period = window.StarGuardPeriod;
 
   const LEVELS = {
     low: { label: 'низкий риск', color: 'var(--sg-success)' },
@@ -57,7 +58,14 @@
 }
 .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .head h2 { margin: 0; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-.head .window { color: var(--sg-muted); }
+.head .window { color: var(--sg-muted); display: inline-flex; align-items: center; gap: 4px; }
+.head select {
+  font: inherit; color: var(--sg-muted); background: transparent; cursor: pointer;
+  border: 1px solid transparent; border-radius: 6px; padding: 0 2px; margin: 0 -2px;
+}
+.head select:hover { border-color: var(--sg-border); background: var(--sg-bg-muted); }
+.head select:focus-visible { outline: 2px solid var(--sg-accent); outline-offset: 1px; }
+.head-right { display: inline-flex; align-items: center; gap: 8px; }
 .logo { width: 16px; height: 16px; flex: none; }
 
 .summary { display: flex; gap: 12px; align-items: center; }
@@ -205,8 +213,29 @@ details.evidence[open] summary::before { content: '▾ '; }
   function windowLabel(hours) {
     if (!hours) return '';
     if (hours <= 48) return `${hours} ч`;
-    const days = Math.round(hours / 24);
-    return `${days} ${plural(days, 'день', 'дня', 'дней')}`;
+    const days = Math.max(1, Math.round(hours / 24));
+    if (days <= 60) return `${days} ${plural(days, 'день', 'дня', 'дней')}`;
+    if (days <= 730) {
+      const months = Math.round(days / 30);
+      return `${months} ${plural(months, 'месяц', 'месяца', 'месяцев')}`;
+    }
+    const years = Math.round(days / 365);
+    return `${years} ${plural(years, 'год', 'года', 'лет')}`;
+  }
+
+  function periodFromWindow(hours) {
+    if (!hours) return { kind: 'hours', hours: 6 };
+    return hours <= 24 ? { kind: 'hours', hours } : { kind: 'days', days: Math.round(hours / 24) };
+  }
+
+  function periodLabel(period) {
+    if (!period) return '';
+    if (period.kind === 'all') return 'всё время';
+    if (period.kind === 'days') {
+      const base = windowLabel(period.days * 24);
+      return period.to ? `${base} до ${day(period.to)}` : base;
+    }
+    return windowLabel(period.hours);
   }
 
   function scoreColor(score01) {
@@ -252,7 +281,7 @@ details.evidence[open] summary::before { content: '▾ '; }
       s('text', { x: 34, y: 48, 'text-anchor': 'middle', class: 'of' }, 'из 100'));
   }
 
-  function timeline(report, shadowRoot) {
+  function timeline(report, period) {
     const tl = report.stars_timeline;
     if (!tl || !tl.points || tl.points.length === 0) return null;
     const points = tl.points;
@@ -284,7 +313,9 @@ details.evidence[open] summary::before { content: '▾ '; }
       const hit = s('rect', { class: 'hit', x, y: top, width: step, height: plotH });
       hit.addEventListener('mouseenter', (event) => {
         const end = new Date(new Date(p.at).getTime() + tl.bucket_minutes * 60000).toISOString();
-        const span = tl.bucket_minutes >= 360 ? `${day(p.at)} ${time(p.at)}–${time(end)}` : `${time(p.at)}–${time(end)}`;
+        const span = tl.bucket_minutes >= 1440 ? `${day(p.at)}–${day(end)}`
+          : tl.bucket_minutes >= 360 ? `${day(p.at)} ${time(p.at)}–${time(end)}`
+            : `${time(p.at)}–${time(end)}`;
         tooltip.textContent = `${span}: ${stars(p.stars)}` +
           (p.suspicious ? `, подозрительных ${p.suspicious}` : '') +
           (p.suspect_accounts ? `, из пула ${p.suspect_accounts}` : '');
@@ -313,7 +344,7 @@ details.evidence[open] summary::before { content: '▾ '; }
     const share = report.stats.stars ? Math.round((tl.suspicious_stars / report.stats.stars) * 100) : 0;
     return h('div', { class: 'section' },
       h('div', { class: 'section-title' },
-        h('span', {}, 'Звёзды за ' + windowLabel(report.window.hours)),
+        h('span', {}, 'Звёзды за ' + (periodLabel(period) || windowLabel(report.window.hours))),
         h('span', { class: 'aside' }, `${report.stats.stars} · подозрительных ${tl.suspicious_stars} (${share}%)`)),
       svg,
       tooltip,
@@ -379,14 +410,44 @@ details.evidence[open] summary::before { content: '▾ '; }
     }
   }
 
-  function header(hours, floating, onClose) {
-    return h('div', { class: 'head' },
-      h('h2', {}, logo(), 'Star Guard'),
-      h('span', { class: 'window' }, hours ? `за ${windowLabel(hours)}` : '',
-        floating && onClose ? h('button', { style: 'margin-left: 8px; padding: 0 6px', title: 'Скрыть', onclick: onClose }, '×') : null));
+  function periodPicker(period, actions) {
+    const current = Period.presetId(period);
+    const presets = Period.PRESETS.map((preset) =>
+      h('option', { value: preset.id, selected: preset.id === current }, preset.short));
+    if (!current) {
+      // Период задан вручную в настройках — показываем его отдельной выбранной строкой.
+      presets.unshift(h('option', { value: 'custom', selected: true }, periodLabel(period)));
+    }
+    presets.push(h('option', { value: 'custom-settings' }, 'свой период…'));
+    const select = h('select', {
+      title: 'Период анализа',
+      'aria-label': 'Период анализа',
+      onchange: (event) => {
+        const value = event.target.value;
+        if (value === 'custom-settings') {
+          if (actions.onOpenOptions) actions.onOpenOptions();
+          event.target.value = current || 'custom';
+          return;
+        }
+        const next = Period.fromPreset(value);
+        if (next && actions.onPeriodChange) actions.onPeriodChange(next);
+      },
+    }, presets);
+    return h('span', { class: 'window' }, 'за ', select);
   }
 
-  function reportView(report) {
+  function header(period, floating, actions) {
+    const onClose = actions && actions.onClose;
+    const picker = period && actions && typeof actions.onPeriodChange === 'function'
+      ? periodPicker(period, actions)
+      : h('span', { class: 'window' }, period ? `за ${periodLabel(period)}` : '');
+    return h('div', { class: 'head' },
+      h('h2', {}, logo(), 'Star Guard'),
+      h('span', { class: 'head-right' }, picker,
+        floating && onClose ? h('button', { style: 'padding: 0 6px', title: 'Скрыть', onclick: onClose }, '×') : null));
+  }
+
+  function reportView(report, period) {
     const level = levelOf(report);
     const mockedCount = report.score.checks.filter((c) => c.details && c.details.mocked === true).length;
     const missing = report.archive && report.archive.missing_hours ? report.archive.missing_hours.length : 0;
@@ -398,7 +459,7 @@ details.evidence[open] summary::before { content: '▾ '; }
           h('div', { class: 'meta' },
             h('span', { class: 'pill', style: `color: ${level.color}` }, level.label),
             ' · уверенность ' + Math.round(report.score.confidence * 100) + '%'))),
-      timeline(report),
+      timeline(report, period),
       checks(report),
       evidence(report),
       h('div', { class: 'footer' },
@@ -414,11 +475,15 @@ details.evidence[open] summary::before { content: '▾ '; }
     if (source.type === 'github_api') {
       const sampled = source.stars_sampled || report.stats.stars;
       const total = source.stars_total;
-      return `История GitHub с ${day(report.window.from)}: ${stars(sampled)}` +
+      return `История GitHub, ${rangeText(report)}: ${stars(sampled)}` +
         (total && total > sampled ? ` из ${total}` : '') + '. Пересечение аудиторий в этом режиме не считается.';
     }
     const where = source.type === 'gh_archive_index' ? 'индекс GH Archive' : 'GH Archive';
     return `Данные: ${where}, ${time(report.window.from)}–${time(report.window.to)}.`;
+  }
+
+  function rangeText(report) {
+    return `${day(report.window.from)}–${day(report.window.to)}`;
   }
 
   function compact(n) {
@@ -467,8 +532,8 @@ details.evidence[open] summary::before { content: '▾ '; }
         ];
       case 'not_indexed':
         return [h('div', { class: 'state' },
-          h('p', {}, `Готовой оценки нет: репозиторий не входит в топ-1000 по звёздам за последние ${state.hours} ч.`),
-          h('p', {}, 'Star Guard проверит его по истории звёзд GitHub за 30 дней — обычно это несколько секунд.'),
+          h('p', {}, `Готовой оценки нет: репозиторий не входит в топ-1000 по звёздам за ${periodLabel(state.period)}.`),
+          h('p', {}, 'Star Guard проверит его по истории звёзд GitHub за выбранный период — обычно это несколько секунд.'),
           h('button', { class: 'primary', onclick: actions.onScan }, 'Проверить'))];
       case 'scanning': {
         const pct = state.total ? Math.round((state.done / state.total) * 100) : 0;
@@ -481,9 +546,9 @@ details.evidence[open] summary::before { content: '▾ '; }
       }
       case 'no_data':
         return [h('div', { class: 'state' },
-          h('p', {}, `За последние ${windowLabel(state.hours)} у репозитория не было ни звёзд, ни других публичных событий — оценивать нечего.`),
+          h('p', {}, `За ${periodLabel(state.period)} у репозитория не было ни звёзд, ни других публичных событий — оценивать нечего.`),
           h('p', {}, 'Для небольших проектов это нормально. Накрутка видна по всплеску звёзд, поэтому стоит смотреть окно, где они были.'),
-          state.hours < 24 && actions.onScanDay
+          state.period && state.period.kind === 'hours' && state.period.hours < 24 && actions.onScanDay
             ? h('button', { class: 'primary', onclick: actions.onScanDay }, 'Проверить за 24 ч')
             : null)];
       case 'gone':
@@ -494,12 +559,23 @@ details.evidence[open] summary::before { content: '▾ '; }
         return [h('div', { class: 'state' },
           h('p', {}, 'Сервер прогревает индекс популярных репозиториев. Обычно это пара минут.'),
           h('button', { onclick: actions.onRetry }, 'Повторить'))];
+      case 'out_of_window':
+        return [h('div', { class: 'state' },
+          h('p', {}, `Период ${periodLabel(state.period)} не обслуживается индексом сервера.`),
+          h('p', {}, 'Можно проверить репозиторий напрямую по GH Archive — это займёт 1–3 минуты.'),
+          h('button', { class: 'primary', onclick: actions.onScan }, 'Проверить'))];
       case 'error':
       default:
         return [h('div', { class: 'state' },
           h('p', {}, state.code === 'API_UNREACHABLE'
             ? `Сервер Star Guard недоступен (${state.apiBase || 'адрес не задан'}).`
-            : `Не удалось получить оценку: ${state.message || state.code}.`),
+            : state.code === 'GITHUB_TOKEN_REQUIRED'
+              ? 'Периоды длиннее 24 часов считаются по истории звёзд GitHub — на сервере не задан GITHUB_TOKEN.'
+              : state.code === 'GITHUB_RATE_LIMITED'
+                ? 'GitHub ограничил частоту запросов — попробуйте позже или выберите период покороче.'
+                : state.code === 'GITHUB_HISTORY_NOT_READY'
+                  ? 'GitHub ещё готовит историю звёзд этого репозитория — повторите через минуту.'
+                  : `Не удалось получить оценку: ${state.message || state.code}.`),
           h('button', { onclick: actions.onRetry }, 'Повторить'), ' ',
           actions.onOpenOptions ? h('button', { onclick: actions.onOpenOptions }, 'Настройки') : null)];
     }
@@ -512,9 +588,11 @@ details.evidence[open] summary::before { content: '▾ '; }
   function renderCard(shadowRoot, state, actions, options) {
     const opts = options || {};
     const hours = state.kind === 'report' ? state.data.window.hours : state.hours;
+    const period = state.period || periodFromWindow(hours);
+    const viewState = { ...state, period };
     const card = h('div', { class: 'sg card' + (opts.floating ? ' floating' : '') },
-      header(hours, opts.floating, actions.onClose),
-      ...(state.kind === 'report' ? reportView(state.data) : stateView(state, actions)));
+      header(period, opts.floating, actions),
+      ...(state.kind === 'report' ? reportView(state.data, period) : stateView(viewState, actions)));
     shadowRoot.replaceChildren(h('style', {}, STYLES), card);
   }
 

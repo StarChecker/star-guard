@@ -124,6 +124,66 @@ class GithubHistoryServiceTest {
     }
 
     @Test
+    void explicitEndDateBoundsWindowAndActivity() {
+        FakeRest rest = new FakeRest().page(1, false,
+                week(LocalDate.parse("2026-10-25").atStartOfDay(ZoneOffset.UTC).toEpochSecond(),
+                        0, 0, 0, 10, 20, 30, 40));
+        FakeGraphql graphql = new FakeGraphql().repository("2020-01-01T00:00:00Z", 5000, 900,
+                forks(900, false, List.of("2026-11-10T00:00:00Z", "2026-10-28T00:00:00Z", "2026-10-20T00:00:00Z")),
+                1, List.of("a"), 0, 0);
+
+        RepoData data = service(graphql, rest, null, GithubHistoryProperties.defaults())
+                .load(REPO, HistoryPeriod.until(7, LocalDate.parse("2026-10-31")), ArchiveProgress.NONE);
+
+        assertThat(data.window().from()).isEqualTo(Instant.parse("2026-10-25T00:00:00Z"));
+        assertThat(data.window().to()).isEqualTo(Instant.parse("2026-11-01T00:00:00Z"));
+        GithubSignals github = data.aggregate().snapshot().github();
+        assertThat(github.activity().stars()).isEqualTo(100);
+        // форк от 2026-11-10 — позже конца окна, от 2026-10-20 — раньше начала
+        assertThat(github.activity().forks()).isEqualTo(1);
+    }
+
+    @Test
+    void allHistoryStartsAtRepositoryCreation() {
+        FakeRest rest = new FakeRest().page(1, false, week(WEEK_NOV_01, 1, 1, 1, 1, 1, 1, 1));
+        FakeGraphql graphql = new FakeGraphql().repository("2015-01-01T00:00:00Z", 100_000, 10_000,
+                forks(10_000, false, List.of()), 0, List.of(), 0, 0);
+
+        RepoData data = service(graphql, rest, null, GithubHistoryProperties.defaults())
+                .load(REPO, HistoryPeriod.entireHistory(), ArchiveProgress.NONE);
+
+        assertThat(data.window().from()).isEqualTo(Instant.parse("2015-01-01T00:00:00Z"));
+        assertThat(data.window().to()).isEqualTo(Instant.parse("2026-11-12T11:00:00Z"));
+        assertThat(data.aggregate().snapshot().github().firstDay()).isEqualTo(LocalDate.parse("2015-01-01"));
+        assertThat(data.source().coverageFrom()).isEqualTo(Instant.parse("2015-01-01T00:00:00Z"));
+    }
+
+    @Test
+    void supportsLongWindowUpToConfiguredMaximum() {
+        FakeRest rest = new FakeRest().page(1, false, week(WEEK_NOV_01, 1, 1, 1, 1, 1, 1, 1));
+        FakeGraphql graphql = new FakeGraphql().repository("2015-01-01T00:00:00Z", 100_000, 10_000,
+                forks(10_000, false, List.of()), 0, List.of(), 0, 0);
+        GithubHistoryProperties properties = new GithubHistoryProperties(3650, 180, 10, null, null, null);
+
+        RepoData data = service(graphql, rest, null, properties)
+                .load(REPO, 365, ArchiveProgress.NONE);
+
+        assertThat(data.window().from()).isEqualTo(Instant.parse("2025-11-13T00:00:00Z"));
+        assertThat(data.window().hours()).isEqualTo(364 * 24 + 11);
+    }
+
+    @Test
+    void rejectsEndDateInTheFuture() {
+        GithubHistoryService service = service(new FakeGraphql(), new FakeRest(), null,
+                GithubHistoryProperties.defaults());
+
+        assertThatThrownBy(() -> service.load(REPO, HistoryPeriod.until(30, LocalDate.parse("2026-11-13")),
+                ArchiveProgress.NONE))
+                .isInstanceOf(InvalidWindowException.class)
+                .hasMessageContaining("future");
+    }
+
+    @Test
     void deletedRepositoryIsReportedAsGone() {
         FakeGraphql graphql = new FakeGraphql();
         graphql.gone = true;

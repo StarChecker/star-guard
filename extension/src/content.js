@@ -5,6 +5,7 @@
   'use strict';
 
   const UI = window.StarGuardUI;
+  const Period = window.StarGuardPeriod;
   const MARK = 'data-star-guard';
   const RESERVED = new Set([
     'about', 'account', 'apps', 'codespaces', 'collections', 'contact', 'customer-stories', 'dashboard',
@@ -19,7 +20,7 @@
   let cardState = { kind: 'loading' };
   let repoPreview = null;      // F5: базовая статистика GitHub, пока нет оценки
   let previewRequested = null; // для какого репозитория уже запрошен preview
-  let settings = { hours: 6, listDots: true };
+  let settings = { hours: 6, period: { kind: 'hours', hours: 6 }, listDots: true };
   let scanTimer = null;
   let floatingOpen = false;   // плавающая панель открыта значком
   let floatingClosed = false; // пользователь закрыл панель без значка
@@ -62,34 +63,36 @@
 
   // ---------- состояние карточки ----------
 
-  function stateFromResponse(response, hours) {
-    if (response.ok) return { kind: 'report', data: response.data };
+  function stateFromResponse(response, period) {
+    if (response.ok) return { kind: 'report', data: response.data, period };
     switch (response.code) {
       case 'REPO_NOT_INDEXED':
-        return { kind: 'not_indexed', hours };
+        return { kind: 'not_indexed', period };
       case 'REPO_NOT_FOUND_IN_WINDOW':
-        return { kind: 'no_data', hours };
+        return { kind: 'no_data', period };
       case 'REPO_NOT_FOUND_ON_GITHUB':
-        return { kind: 'gone', hours };
+        return { kind: 'gone', period };
       case 'INDEX_NOT_READY':
-        return { kind: 'index_not_ready', hours };
+        return { kind: 'index_not_ready', period };
+      case 'INVALID_REQUEST':
+        return { kind: 'out_of_window', period, message: response.message };
       default:
-        return { kind: 'error', hours, code: response.code, message: response.message, apiBase: response.apiBase };
+        return { kind: 'error', period, code: response.code, message: response.message, apiBase: response.apiBase };
     }
   }
 
   async function loadRepo(repo) {
-    const hours = settings.hours;
-    cardState = { kind: 'loading', hours };
+    const period = settings.period;
+    cardState = { kind: 'loading', period };
     renderRepo();
     const pending = await scanFor(repo);
     if (pending) {
-      followScan(repo, pending.id, hours);
+      followScan(repo, pending.id, pending.period || period);
       return;
     }
-    const response = await send({ type: 'report', repo, hours });
+    const response = await send({ type: 'report', repo, period });
     if (repo !== currentRepo) return;
-    cardState = stateFromResponse(response, hours);
+    cardState = stateFromResponse(response, period);
     renderRepo();
   }
 
@@ -103,31 +106,33 @@
     }
   }
 
-  async function startScan(requestedHours) {
+  async function startScan(requested) {
     const repo = currentRepo;
-    const hours = requestedHours || settings.hours;
-    cardState = { kind: 'scanning', done: 0, total: hours, hours };
+    const period = typeof requested === 'number'
+      ? { kind: 'hours', hours: Period.clampHours(requested, settings.hours) }
+      : Period.normalize(requested || settings.period, settings.hours);
+    cardState = { kind: 'scanning', done: 0, total: period.kind === 'hours' ? period.hours : 0, period };
     renderRepo();
-    const response = await send({ type: 'scanStart', repo, hours });
+    const response = await send({ type: 'scanStart', repo, period });
     if (response.ok) {
-      cardState = { kind: 'scanning', done: 0, total: response.data.hours_total, hours, source: response.data.source };
+      cardState = { kind: 'scanning', done: 0, total: response.data.hours_total, period, source: response.data.source };
       renderRepo();
     }
     if (!response.ok) {
-      cardState = stateFromResponse(response, hours);
+      cardState = stateFromResponse(response, period);
       renderRepo();
       return;
     }
     try {
-      await chrome.storage.session.set({ ['scan:' + repo.toLowerCase()]: { id: response.data.id } });
+      await chrome.storage.session.set({ ['scan:' + repo.toLowerCase()]: { id: response.data.id, period } });
     } catch (ignored) {
       // session storage недоступен в старых версиях — просто не переживём перезагрузку
     }
-    followScan(repo, response.data.id, hours);
+    followScan(repo, response.data.id, period);
   }
 
-  function followScan(repo, id, scanHours) {
-    let hours = scanHours;
+  function followScan(repo, id, scanPeriod) {
+    const period = scanPeriod || settings.period;
     clearTimeout(scanTimer);
     const tick = async () => {
       if (repo !== currentRepo) return;
@@ -135,21 +140,21 @@
       if (repo !== currentRepo) return;
       if (!response.ok) {
         await forgetScan(repo);
-        cardState = response.code === 'SCAN_NOT_FOUND' ? { kind: 'not_indexed', hours } : stateFromResponse(response, hours);
+        cardState = response.code === 'SCAN_NOT_FOUND'
+          ? { kind: 'not_indexed', period }
+          : stateFromResponse(response, period);
         renderRepo();
         return;
       }
       const scan = response.data;
-      // для истории GitHub шаги — это страницы, а окно — 30 дней
-      hours = scan.source === 'github' ? 720 : (scan.hours_total || hours);
       if (scan.status === 'done') {
         await forgetScan(repo);
-        cardState = { kind: 'report', data: scan.report };
+        cardState = { kind: 'report', data: scan.report, period };
       } else if (scan.status === 'failed') {
         await forgetScan(repo);
-        cardState = stateFromResponse({ ok: false, code: scan.error_code, message: scan.error_message }, hours);
+        cardState = stateFromResponse({ ok: false, code: scan.error_code, message: scan.error_message }, period);
       } else {
-        cardState = { kind: 'scanning', done: scan.hours_done, total: scan.hours_total, hours, source: scan.source };
+        cardState = { kind: 'scanning', done: scan.hours_done, total: scan.hours_total, period, source: scan.source };
         scanTimer = setTimeout(tick, 1500);
       }
       renderRepo();
@@ -169,9 +174,31 @@
     onScan: () => startScan(),
     onScanDay: () => startScan(24),
     onRetry: () => { send({ type: 'clearCache' }).then(() => loadRepo(currentRepo)); },
-    onOpenOptions: () => window.open(chrome.runtime.getURL('options.html'), '_blank'),
+    // Из веб-страницы Chrome блокирует навигацию на chrome-extension:// (ERR_BLOCKED_BY_CLIENT),
+    // поэтому открываем настройки через service worker.
+    onOpenOptions: () => send({ type: 'openOptions' }),
+    onPeriodChange: (period) => changePeriod(period),
     onClose: () => { floatingOpen = false; floatingClosed = true; renderRepo(); },
   };
+
+  // Смена периода из карточки: сразу применяем на странице и сохраняем в настройки,
+  // чтобы тот же период использовали popup и точки в списках.
+  async function changePeriod(value) {
+    const period = Period.normalize(value, settings.hours);
+    if (Period.key(period) === Period.key(settings.period)) return;
+    const hours = Period.indexHours(period, settings.hours);
+    settings = { ...settings, period, hours };
+    listCache.clear();
+    document.querySelectorAll('[data-star-guard-dot]').forEach((dot) => dot.remove());
+    document.querySelectorAll('[data-star-guard-done]').forEach((link) => link.removeAttribute('data-star-guard-done'));
+    scheduleListDots();
+    if (currentRepo) loadRepo(currentRepo);
+    try {
+      await chrome.storage.sync.set({ period, hours });
+    } catch (ignored) {
+      // не удалось сохранить — период всё равно применился к текущей странице
+    }
+  }
 
   // ---------- встраивание на странице репозитория ----------
 
@@ -391,7 +418,14 @@
     chrome.storage.onChanged.addListener(async (changes, area) => {
       if (area !== 'sync') return;
       const fresh = await send({ type: 'settings' });
-      if (fresh.ok) settings = fresh.data;
+      if (!fresh.ok) return;
+      // Свою смену периода content script уже применил и перерисовал — не грузим повторно.
+      const changed = Period.key(fresh.data.period) !== Period.key(settings.period)
+        || fresh.data.hours !== settings.hours
+        || fresh.data.listDots !== settings.listDots
+        || fresh.data.apiBase !== settings.apiBase;
+      settings = fresh.data;
+      if (!changed) return;
       listCache.clear();
       if (currentRepo) loadRepo(currentRepo);
     });

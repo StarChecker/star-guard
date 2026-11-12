@@ -14,9 +14,11 @@ import ru.itmo.ipkn.starguard.core.scoring.CheckIds;
 import ru.itmo.ipkn.starguard.core.scoring.FreshAccountsCheck;
 import ru.itmo.ipkn.starguard.core.scoring.RepoScore;
 
+import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -131,7 +133,7 @@ public class StarTimelineService {
                 }));
         int[] daily = github.dailyStars();
         LocalDate from = github.activity().from().atZone(ZoneOffset.UTC).toLocalDate();
-        List<StarTimeline.Point> points = new ArrayList<>();
+        List<StarTimeline.Point> dayPoints = new ArrayList<>();
         int suspicious = 0;
         for (int i = 0; i < daily.length; i++) {
             LocalDate day = github.day(i);
@@ -140,10 +142,32 @@ public class StarTimelineService {
             }
             int flagged = Math.min(daily[i], excessByDay.getOrDefault(day.toString(), 0));
             suspicious += flagged;
-            points.add(new StarTimeline.Point(day.atStartOfDay(ZoneOffset.UTC).toInstant(), daily[i], flagged));
+            dayPoints.add(new StarTimeline.Point(day.atStartOfDay(ZoneOffset.UTC).toInstant(), daily[i], flagged));
         }
         Map<String, Integer> byCheck = suspicious > 0 ? Map.of(CheckIds.DAILY_BURST, suspicious) : Map.of();
-        return new StarTimeline(24 * 60, false, points, suspicious, byCheck);
+
+        // Длинные периоды рисуем недельными/месячными столбцами: год — 365 дней,
+        // всё время — тысячи точек, на графике шириной 296 px они неразличимы.
+        int bucketDays = dayPoints.size() <= 120 ? 1 : dayPoints.size() <= 730 ? 7 : 30;
+        if (bucketDays == 1) {
+            return new StarTimeline(24 * 60, false, dayPoints, suspicious, byCheck);
+        }
+        Map<LocalDate, int[]> buckets = new TreeMap<>();
+        for (StarTimeline.Point point : dayPoints) {
+            LocalDate day = point.at().atZone(ZoneOffset.UTC).toLocalDate();
+            LocalDate key = bucketDays == 7
+                    ? day.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                    : day.withDayOfMonth(1);
+            int[] sums = buckets.computeIfAbsent(key, ignored -> new int[2]);
+            sums[0] += point.stars();
+            sums[1] += point.suspicious();
+        }
+        List<StarTimeline.Point> points = new ArrayList<>(buckets.size());
+        for (Map.Entry<LocalDate, int[]> entry : buckets.entrySet()) {
+            points.add(new StarTimeline.Point(
+                    entry.getKey().atStartOfDay(ZoneOffset.UTC).toInstant(), entry.getValue()[0], entry.getValue()[1]));
+        }
+        return new StarTimeline(bucketDays * 24 * 60, false, points, suspicious, byCheck);
     }
 
     static int bucketMinutes(int hours) {

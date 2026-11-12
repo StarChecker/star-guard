@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveProgress;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveUnavailableException;
+import ru.itmo.ipkn.starguard.core.archive.InvalidWindowException;
 import ru.itmo.ipkn.starguard.core.archive.TimeWindowCalculator;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
@@ -22,6 +23,7 @@ import ru.itmo.ipkn.starguard.core.service.RepoReportService;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -80,22 +82,55 @@ public class ScanService {
      * @param source null — выбрать автоматически
      */
     public ScanJob start(RepoRef repo, Integer requestedHours, ScanJob.Source source) {
-        TimeWindow window = windowCalculator.window(requestedHours);
-        ScanJob.Source chosen = source != null
-                ? source
-                : reportService.historyAvailable() ? ScanJob.Source.GITHUB : ScanJob.Source.ARCHIVE;
-        String key = repo.fullName().toLowerCase(Locale.ROOT) + "|" + chosen + "|"
-                + (chosen == ScanJob.Source.GITHUB ? "history" : window.from() + "|" + window.hours());
+        return start(repo, requestedHours, null, null, false, source);
+    }
+
+    /**
+     * Скан за явный период истории GitHub (дни до даты включительно или вся история)
+     * либо за часовое окно GH Archive. Период {@code days}/{@code to}/{@code all}
+     * всегда обслуживает источник GITHUB.
+     */
+    public ScanJob start(
+            RepoRef repo,
+            Integer requestedHours,
+            Integer requestedDays,
+            LocalDate to,
+            boolean all,
+            ScanJob.Source source) {
+        boolean explicitPeriod = all || requestedDays != null || to != null;
+        if (explicitPeriod && source == ScanJob.Source.ARCHIVE) {
+            throw new InvalidWindowException("days/all are supported only by the GitHub history source");
+        }
+        if (all && requestedDays != null) {
+            throw new InvalidWindowException("days and all are mutually exclusive");
+        }
+        if (to != null && !all && requestedDays == null) {
+            throw new InvalidWindowException("to requires days or all");
+        }
+        ScanJob.Source chosen = explicitPeriod
+                ? ScanJob.Source.GITHUB
+                : source != null
+                        ? source
+                        : reportService.historyAvailable() ? ScanJob.Source.GITHUB : ScanJob.Source.ARCHIVE;
+        TimeWindow window = chosen == ScanJob.Source.ARCHIVE ? windowCalculator.window(requestedHours) : null;
+        String periodKey = chosen == ScanJob.Source.GITHUB
+                ? (all ? "all" : requestedDays != null ? "d" + requestedDays : "history")
+                        + (to == null ? "" : "@" + to)
+                : window.from() + "|" + window.hours();
+        String key = repo.fullName().toLowerCase(Locale.ROOT) + "|" + chosen + "|" + periodKey;
+        int totalHours = chosen == ScanJob.Source.GITHUB
+                ? (requestedDays != null ? Math.min(87_600, requestedDays * 24) : 720)
+                : window.hours();
         synchronized (jobIdByKey) {
             String existingId = jobIdByKey.get(key);
             ScanJob existing = existingId == null ? null : jobs.getIfPresent(existingId);
             if (existing != null && existing.status() != ScanJob.Status.FAILED) {
                 return existing;
             }
-            ScanJob job = new ScanJob(UUID.randomUUID().toString(), repo, window.hours(), chosen, clock.instant());
+            ScanJob job = new ScanJob(UUID.randomUUID().toString(), repo, totalHours, chosen, clock.instant());
             jobs.put(job.id(), job);
             jobIdByKey.put(key, job.id());
-            executor.submit(() -> run(job, requestedHours));
+            executor.submit(() -> run(job, requestedHours, requestedDays, to, all));
             return job;
         }
     }
@@ -104,14 +139,14 @@ public class ScanService {
         return Optional.ofNullable(jobs.getIfPresent(id));
     }
 
-    private void run(ScanJob job, Integer requestedHours) {
+    private void run(ScanJob job, Integer requestedHours, Integer requestedDays, LocalDate to, boolean all) {
         job.running();
         active.incrementAndGet();
         Timer.Sample sample = Timer.start(Metrics.globalRegistry);
         try {
             ArchiveProgress progress = job::progress;
             job.done(job.source() == ScanJob.Source.GITHUB
-                    ? reportService.historyReport(job.repo(), null, progress)
+                    ? reportService.historyReport(job.repo(), requestedDays, to, all, null, progress)
                     : reportService.scanArchive(job.repo(), requestedHours, null, progress));
         } catch (RepoGoneException e) {
             job.failed("REPO_NOT_FOUND_ON_GITHUB", e.getMessage());

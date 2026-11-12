@@ -35,7 +35,7 @@
   "content_scripts": [
     {
       "matches": ["https://github.com/*"],
-      "js": ["src/ui.js", "src/easter.js", "src/content.js"],
+      "js": ["src/period.js", "src/ui.js", "src/easter.js", "src/content.js"],
       "run_at": "document_idle"
     }
   ]

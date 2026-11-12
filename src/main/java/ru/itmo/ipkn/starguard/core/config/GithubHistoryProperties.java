@@ -21,11 +21,11 @@ public record GithubHistoryProperties(
         cacheTtl = cacheTtl == null ? Duration.ofMinutes(5) : cacheTtl;
         existenceCheck = existenceCheck == null || existenceCheck;
         existenceTtl = existenceTtl == null ? Duration.ofHours(6) : existenceTtl;
-        if (maxDays < 1 || maxDays > 90) {
-            throw new IllegalArgumentException("app.github.history.max-days must be within [1, 90]");
+        if (maxDays < 1 || maxDays > 3650) {
+            throw new IllegalArgumentException("app.github.history.max-days must be within [1, 3650]");
         }
-        if (historyDays < maxDays || historyDays > 3650) {
-            throw new IllegalArgumentException("app.github.history.history-days must be within [max-days, 3650]");
+        if (historyDays < 1 || historyDays > 3650) {
+            throw new IllegalArgumentException("app.github.history.history-days must be within [1, 3650]");
         }
         if (maxForkPages < 1 || maxForkPages > 100) {
             throw new IllegalArgumentException("app.github.history.max-fork-pages must be within [1, 100]");

@@ -51,6 +51,31 @@ paths:
           maximum: 24
           minimum: 1
         example: 6
+      - name: days
+        in: query
+        description: Окно истории GitHub в днях (1–3650); не сочетается с hours
+        required: false
+        schema:
+          type: integer
+          format: int32
+          maximum: 3650
+          minimum: 1
+        example: 30
+      - name: to
+        in: query
+        description: Дата окончания периода для days включительно (ISO yyyy-MM-dd); по умолчанию сегодня
+        required: false
+        schema:
+          type: string
+          format: date
+        example: "2025-05-01"
+      - name: all
+        in: query
+        description: Вся история репозитория от даты создания; не сочетается с days/hours
+        required: false
+        schema:
+          type: boolean
+          default: false
       - name: mock_mode
         in: query
         description: "PoC: профиль мок-проверок (healthy | borderline | suspicious)"

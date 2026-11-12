@@ -172,6 +172,10 @@ index, badge. Внешняя LLM не нужна: интерпретация с�
   claude mcp add star-guard -- node mcp/dist/index.js
   # env: STAR_GUARD_API_URL; транспорт stdio
   ```
+- **Реализация:** отдельный репозиторий
+  [StarChecker/star-guard-mcp](https://github.com/StarChecker/star-guard-mcp)
+  (`main`, stdio, 15 тестов, без внешних LLM). Compose-обвязка и ручная
+  проверка в Claude Code — остаток F2-5.
 - **DoD:** MCP подключается в Claude Code по stdio; индексный репозиторий отдаёт
   структуру выше; внешний — запускает скан; тесты/документация. Никаких
   API-ключей LLM и исходящих запросов, кроме нашего сервиса. Streamable HTTP —

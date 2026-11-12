@@ -43,13 +43,18 @@
 
 ## F2. MCP-сервер под Claude Code (stdio, без внешних LLM)
 
+> ✅ Реализовано в отдельном репозитории
+> **[StarChecker/star-guard-mcp](https://github.com/StarChecker/star-guard-mcp)**
+> (`main`, 15 тестов, stdio, без внешних LLM).
+> F2-5: остались Compose-обвязка и ручная проверка в Claude Code.
+
 | ID | Задача | Владелец | Оценка | Dep | Статус | Ветка / PR |
 |----|--------|----------|--------|-----|--------|------------|
-| F2-1 | Каркас `mcp/` на TypeScript + MCP SDK (stdio) | Dev 1 · `@h0o0p0e` | 2 | — | ⬜ | — |
-| F2-2 | Инструменты `assess_dependency`, report/scan/batch/index/badge | Dev 1 · `@h0o0p0e` | 2 | F2-1 | ⬜ | — |
-| F2-3 | Детерминированная трактовка по `level`/`verdict`/порогам | Dev 1 · `@h0o0p0e` | 1 | F2-2 | ⬜ | — |
-| F2-4 | Guardrails: `mocked`/`insufficient_data`/покрытие, дисклеймер | Dev 1 · `@h0o0p0e` | 1 | F2-3 | ⬜ | — |
-| F2-5 | Конфиг Claude Code, Compose, тесты с fake core | Dev 1 · `@h0o0p0e` | 1–2 | F2-4 | ⬜ | — |
+| F2-1 | Каркас MCP-сервера (stdio, Node/TypeScript) | Dev 1 · `@h0o0p0e` | 2 | — | ✅ | `star-guard-mcp/main` |
+| F2-2 | Инструменты `assess_dependency`, report/scan/batch/index/badge | Dev 1 · `@h0o0p0e` | 2 | F2-1 | ✅ | `star-guard-mcp/main` |
+| F2-3 | Детерминированная трактовка по `level`/`verdict`/порогам | Dev 1 · `@h0o0p0e` | 1 | F2-2 | ✅ | `star-guard-mcp/main` |
+| F2-4 | Guardrails: `mocked`/`insufficient_data`/покрытие, дисклеймер | Dev 1 · `@h0o0p0e` | 1 | F2-3 | ✅ | `star-guard-mcp/main` |
+| F2-5 | Конфиг Claude Code, Compose, тесты с fake core | Dev 1 · `@h0o0p0e` | 1–2 | F2-4 | 🟡 | `star-guard-mcp/main` (Compose/manual pending) |
 
 ## F3. Парсинг, 10k top-tier и long-tail без OOM
 
@@ -98,5 +103,9 @@
   можно уточнить в PR.
 - «Выполнено» = PR смержен, тесты зелёные, DoD задачи закрыт; не просто
   «код написан».
+- Вне плана: периоды анализа от часов до всей истории репозитория
+  (ветка `docs/next-features-plan`, PR ещё нет). API принимает `days` (1–3650),
+  `to` и `all` и считает длинные окна по дневной истории GitHub; `hours` больше
+  окна индекса дочитывается из GH Archive вместо ошибки.
 - Для GitHub Projects/Issues можно позже импортировать этот список: ID задачи
   использовать как заголовок issue, статус — как поле Status.

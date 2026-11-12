@@ -16,10 +16,8 @@ import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 import ru.itmo.ipkn.starguard.core.github.GithubUnavailableException;
 import ru.itmo.ipkn.starguard.core.github.RepoGoneException;
-import ru.itmo.ipkn.starguard.core.github.StarsHiddenException;
 import ru.itmo.ipkn.starguard.core.metrics.StarGuardMetrics;
 import ru.itmo.ipkn.starguard.core.service.RepoNotFoundException;
-import ru.itmo.ipkn.starguard.core.service.RepoReport;
 import ru.itmo.ipkn.starguard.core.service.RepoReportService;
 
 import java.time.Clock;
@@ -112,7 +110,9 @@ public class ScanService {
         Timer.Sample sample = Timer.start(Metrics.globalRegistry);
         try {
             ArchiveProgress progress = job::progress;
-            job.done(report(job, requestedHours, progress));
+            job.done(job.source() == ScanJob.Source.GITHUB
+                    ? reportService.historyReport(job.repo(), null, progress)
+                    : reportService.scanArchive(job.repo(), requestedHours, null, progress));
         } catch (RepoGoneException e) {
             job.failed("REPO_NOT_FOUND_ON_GITHUB", e.getMessage());
         } catch (GithubUnavailableException e) {
@@ -133,18 +133,6 @@ public class ScanService {
                             : job.errorCode() == null ? "failed" : job.errorCode().toLowerCase(Locale.ROOT))
                     .register(Metrics.globalRegistry));
         }
-    }
-
-    private RepoReport report(ScanJob job, Integer requestedHours, ArchiveProgress progress) {
-        if (job.source() == ScanJob.Source.GITHUB) {
-            try {
-                return reportService.historyReport(job.repo(), null, progress);
-            } catch (StarsHiddenException e) {
-                log.info("Stargazers of {} are hidden by GitHub, scanning GH Archive instead", job.repo().fullName());
-                job.switchSource(ScanJob.Source.ARCHIVE);
-            }
-        }
-        return reportService.scanArchive(job.repo(), requestedHours, null, progress);
     }
 
     @PreDestroy

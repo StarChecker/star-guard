@@ -17,7 +17,7 @@ public final class ScanJob {
     private final String id;
     private final RepoRef repo;
     private final int hoursTotal;
-    private volatile Source source;
+    private final Source source;
     private final Instant createdAt;
     private final AtomicInteger stepsTotal = new AtomicInteger();
     private final AtomicInteger hoursDone = new AtomicInteger();
@@ -37,10 +37,6 @@ public final class ScanJob {
 
     public Source source() {
         return source;
-    }
-
-    void switchSource(Source newSource) {
-        this.source = newSource;
     }
 
     /** Всего шагов: часов архива или страниц истории GitHub. */

@@ -3,6 +3,7 @@ package ru.itmo.ipkn.starguard.core.service;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import ru.itmo.ipkn.starguard.core.domain.ActorProfile;
+import ru.itmo.ipkn.starguard.core.domain.GithubSignals;
 import ru.itmo.ipkn.starguard.core.domain.RepoSnapshot;
 import ru.itmo.ipkn.starguard.core.domain.StarMark;
 import ru.itmo.ipkn.starguard.core.domain.StarTimeline;
@@ -14,6 +15,8 @@ import ru.itmo.ipkn.starguard.core.scoring.FreshAccountsCheck;
 import ru.itmo.ipkn.starguard.core.scoring.RepoScore;
 
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -44,6 +47,9 @@ public class StarTimelineService {
     }
 
     public StarTimeline build(RepoSnapshot snapshot, RepoScore score, List<StarMark> stars) {
+        if (snapshot.github() != null) {
+            return daily(snapshot.github(), score);
+        }
         TimeWindow window = snapshot.window();
         int bucketMinutes = bucketMinutes(window.hours());
         int totalMinutes = window.hours() * 60;
@@ -108,6 +114,36 @@ public class StarTimelineService {
                     Math.min(starsPerBucket[bucket], suspiciousPerBucket[bucket])));
         }
         return new StarTimeline(bucketMinutes, estimated, points, suspiciousStars, byCheck);
+    }
+
+    static StarTimeline daily(GithubSignals github, RepoScore score) {
+        Map<String, Integer> excessByDay = new HashMap<>();
+        score.checks().stream()
+                .filter(check -> check.checkId().equals(CheckIds.DAILY_BURST))
+                .filter(check -> check.active() && check.score() > 0)
+                .findFirst()
+                .map(check -> check.details().get("burst_days"))
+                .filter(List.class::isInstance)
+                .ifPresent(list -> ((List<?>) list).forEach(item -> {
+                    if (item instanceof Map<?, ?> burst && burst.get("excess") instanceof Number excess) {
+                        excessByDay.put(String.valueOf(burst.get("day")), excess.intValue());
+                    }
+                }));
+        int[] daily = github.dailyStars();
+        LocalDate from = github.activity().from().atZone(ZoneOffset.UTC).toLocalDate();
+        List<StarTimeline.Point> points = new ArrayList<>();
+        int suspicious = 0;
+        for (int i = 0; i < daily.length; i++) {
+            LocalDate day = github.day(i);
+            if (day.isBefore(from)) {
+                continue;
+            }
+            int flagged = Math.min(daily[i], excessByDay.getOrDefault(day.toString(), 0));
+            suspicious += flagged;
+            points.add(new StarTimeline.Point(day.atStartOfDay(ZoneOffset.UTC).toInstant(), daily[i], flagged));
+        }
+        Map<String, Integer> byCheck = suspicious > 0 ? Map.of(CheckIds.DAILY_BURST, suspicious) : Map.of();
+        return new StarTimeline(24 * 60, false, points, suspicious, byCheck);
     }
 
     static int bucketMinutes(int hours) {

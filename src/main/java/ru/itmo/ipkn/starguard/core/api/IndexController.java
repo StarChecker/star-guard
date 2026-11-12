@@ -120,7 +120,7 @@ public class IndexController {
                 String verdict = null;
                 if (score) {
                     try {
-                        RepoScore repoScore = reports.getReport(indexed.repo(), null, null).score();
+                        RepoScore repoScore = reports.indexReport(indexed.repo(), null, null).score();
                         if (levelCap != null && repoScore.level().ordinal() > levelCap.ordinal()) {
                             skippedByLevel++;
                             continue;

@@ -23,8 +23,21 @@
    → выбрать папку `extension/`. Готовый zip собирает CI (артефакт `star-guard-extension`).
 3. Открыть любой репозиторий на GitHub.
 
-Для сервера не на localhost — указать адрес в настройках расширения:
-браузер попросит разрешение на этот домен.
+Для сервера не на localhost — указать адрес в настройках расширения
+(иконка Star Guard → «Настройки» → «Адрес сервера», там же «Проверить соединение» и «вернуть»
+адрес по умолчанию): браузер попросит разрешение на этот домен.
+
+## Сборка и адрес сервера по умолчанию
+
+Адрес по умолчанию лежит в `src/config.js` (`http://localhost:8080`). Архив собирает
+`scripts/pack-extension.sh [out.zip]`; если задать `STAR_GUARD_API_URL`, скрипт подставит
+этот адрес в `config.js` и добавит его origin в `host_permissions` — разрешение спрашивать
+не придётся. В CI и на лендинге адрес берётся из переменной репозитория `STAR_GUARD_API_URL`
+(Settings → Secrets and variables → Actions → Variables).
+
+Собранный архив лежит в `site/star-guard-extension.zip`; лендинг (`site/`, публикуется в
+GitHub Pages workflow `pages.yml`) раздаёт свежую сборку по адресу
+https://starchecker.github.io/star-guard/ — на него ведёт QR-код `site/qr.svg`.
 
 ## Как устроено
 

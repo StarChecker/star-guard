@@ -1,0 +1,61 @@
+name: Pages
+
+# Лендинг для QR-кода: site/ + живое превью интерфейса расширения + свежий zip расширения.
+# Адрес сервера по умолчанию в сборке — переменная репозитория STAR_GUARD_API_URL
+# (Settings → Secrets and variables → Actions → Variables); без неё — http://localhost:8080.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'extension/**'
+      - 'scripts/pack-extension.sh'
+      - 'scripts/build-site.sh'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build site
+        env:
+          STAR_GUARD_API_URL: ${{ vars.STAR_GUARD_API_URL }}
+        run: scripts/build-site.sh _site
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

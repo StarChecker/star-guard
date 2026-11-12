@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Star Guard — индекс подозрительности звёзд на GitHub</title>
+<meta name="description" content="Расширение для Chrome: показывает признаки накрутки звёзд прямо на страницах GitHub — оценку, причины и график звёзд.">
+<meta property="og:title" content="Star Guard">
+<meta property="og:description" content="Индекс подозрительности звёзд на GitHub — расширение для Chrome.">
+<meta name="theme-color" content="#fcfcff">
+<link rel="icon" href="ext/icon-32.png">
+<link rel="preload" href="fonts/onest.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="fonts/unbounded.woff" as="font" type="font/woff" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="#"><span class="owl-mini" data-sprite="owl" aria-hidden="true"></span><span>Star Guard</span></a>
+  <a class="gh" href="https://github.com/StarChecker/star-guard" rel="noopener">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+    <span>GitHub</span>
+  </a>
+</header>
+
+<main>
+  <!-- Первый экран -->
+  <section class="hero">
+    <div class="hero-text">
+      <div class="labels">
+        <span class="label l-violet"><span class="dot"></span>ИТМО · DevDays Fall 2026</span>
+        <span class="label l-blue">команда StarChecker</span>
+      </div>
+      <h1>Star <span class="neon">Guard</span></h1>
+      <p class="sub">Индекс <span class="neon">подозрительности</span> звёзд на GitHub — прямо на странице репозитория</p>
+
+      <div class="cta">
+        <a class="btn primary" href="star-guard-extension.zip" download>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+          Скачать для Chrome
+        </a>
+        <a class="btn" href="#install">Как установить</a>
+      </div>
+
+      <div class="mobile-note" id="mobileNote" hidden>
+        <p><b>Вы с телефона.</b> Расширение ставится в Chrome на компьютере — перешлите себе ссылку и откройте её за ноутбуком.</p>
+        <div class="copy-row url-row"><code class="url" id="pageUrl">starchecker.github.io/star-guard</code><button type="button" class="copy" id="copyUrl">копировать</button></div>
+        <div class="send">
+          <a class="btn tg" id="sendTg" href="#" rel="noopener">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.9 4.6 18.8 19.3c-.2 1-.8 1.3-1.7.8l-4.6-3.4-2.2 2.1c-.3.3-.5.5-1 .5l.3-4.7 8.6-7.8c.4-.3-.1-.5-.6-.2L6.9 13.3l-4.6-1.4c-1-.3-1-1 .2-1.5l18-6.9c.8-.3 1.6.2 1.4 1.1z"/></svg>
+            В Telegram
+          </a>
+          <a class="btn" id="sendMail" href="#">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" d="M3 6h18v12H3z"/><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" d="m3 7 9 6 9-6"/></svg>
+            На почту
+          </a>
+          <button class="btn" type="button" id="shareBtn" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5M5 13v6h14v-6"/></svg>
+            Ещё…
+          </button>
+        </div>
+        <p class="fine" id="shareHint" hidden>В Chrome на Android в «Ещё…» есть «Отправить на свои устройства» — ссылка сама придёт в Chrome на компьютере, если там тот же аккаунт Google.</p>
+      </div>
+    </div>
+
+    <div class="repo-card" aria-hidden="true">
+      <div class="owl-big" data-sprite="owl"></div>
+      <div class="rc-top">
+        <span class="rc-name">owner / suspicious-repo</span>
+        <div class="starbtn"><span><svg viewBox="0 0 16 16"><use href="#star"/></svg>Star</span><span>2 113</span></div>
+      </div>
+      <div class="contrib" id="contrib"></div>
+      <div class="legend"><span>активность звёзд · 26 недель</span><span class="hotmark">■ всплеск</span></div>
+      <div class="badge"><span>star-guard</span><span>score 78 · high</span></div>
+    </div>
+  </section>
+
+  <div class="ticker" aria-hidden="true"><div class="track" id="ticker"></div></div>
+
+  <!-- Как выглядит -->
+  <section class="block" id="demo">
+    <div class="head">
+      <span class="label l-blue"><span class="dot"></span>preview</span>
+      <h2>Так это выглядит на GitHub</h2>
+      <p class="lead">Значок у кнопки Star и карточка под About: вердикт, score 0–100, график звёзд и причины. Ниже — настоящий интерфейс расширения на примерах данных.</p>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Пример">
+      <button role="tab" aria-selected="true" data-sample="farm">Накрутка</button>
+      <button role="tab" aria-selected="false" data-sample="healthy">Органика</button>
+      <button role="tab" aria-selected="false" data-sample="history">По истории</button>
+    </div>
+
+    <div class="gh-frame">
+      <div class="gh-bar">
+        <span class="gh-repo" id="demoRepo">quick-ai / gpt-agent-pro</span>
+        <span class="gh-actions"><span class="gh-btn">☆ Star</span><span id="demoBadge"></span></span>
+      </div>
+      <div class="gh-body">
+        <div class="gh-files" aria-hidden="true">
+          <div class="f"><b>src</b><span>feat: agent loop</span></div>
+          <div class="f"><b>docs</b><span>update readme</span></div>
+          <div class="f"><b>README.md</b><span>⭐ star us!</span></div>
+          <div class="f"><b>package.json</b><span>bump 0.0.3</span></div>
+          <div class="readme"><b>README.md</b><i style="width:62%"></i><i style="width:88%"></i><i style="width:74%"></i><i style="width:40%"></i><i class="img"></i><i style="width:81%"></i><i style="width:67%"></i><i style="width:90%"></i><i style="width:35%"></i></div>
+        </div>
+        <div class="gh-side"><div class="gh-about">About</div><div id="demoCard"></div></div>
+      </div>
+    </div>
+    <p class="fine">Данные примеров сгенерированы для демонстрации и не относятся к реальным репозиториям.</p>
+  </section>
+
+  <!-- Что проверяем -->
+  <section class="block" id="checks">
+    <div class="head">
+      <span class="label l-pink"><span class="dot"></span>issue · задача</span>
+      <h2>Звёзды на GitHub можно <span class="mark">купить</span></h2>
+      <p class="lead">Star Guard ищет следы накрутки в событиях GH Archive и сводит их в одну оценку с объяснением.</p>
+    </div>
+    <ol class="checks">
+      <li><span class="k">C1</span><div><b>Всплески звёзд</b><small>сотни звёзд за пару часов при обычном фоне</small></div></li>
+      <li><span class="k">C2</span><div><b>Свежие и пустые аккаунты</b><small>звёзды от аккаунтов младше месяца без активности</small></div></li>
+      <li><span class="k">C3</span><div><b>Звёзды без активности</b><small>много звёзд, но почти нет коммитов, issues и PR</small></div></li>
+      <li><span class="k">C4</span><div><b>Пересечение аккаунтов</b><small>одни и те же аккаунты звездят одному набору репозиториев</small></div></li>
+      <li><span class="k">C5</span><div><b>Суточный ритм</b><small>звёзды идут в неестественно ровном ритме</small></div></li>
+    </ol>
+    <div class="levels">
+      <span class="label l-green">low</span><span class="label l-amber">medium</span><span class="label l-pink">high</span><span class="label l-violet">critical</span>
+    </div>
+  </section>
+
+  <!-- Установка -->
+  <section class="block" id="install">
+    <div class="head">
+      <span class="label l-green"><span class="dot"></span>install</span>
+      <h2>Установка за минуту</h2>
+      <p class="lead">Пока расширения нет в Chrome Web Store, оно ставится вручную. Подходит любой браузер на Chromium: Chrome, Edge, Яндекс Браузер, Arc.</p>
+    </div>
+    <ol class="steps">
+      <li><b>Скачайте архив</b><span><a href="star-guard-extension.zip" download>star-guard-extension.zip</a> и распакуйте его в папку</span></li>
+      <li><b>Откройте страницу расширений</b>
+        <span class="copy-row"><code>chrome://extensions</code><button type="button" class="copy" data-copy="chrome://extensions">копировать</button></span>
+        <span>Вставьте адрес в строку браузера — ссылкой его открыть нельзя</span></li>
+      <li><b>Включите «Режим разработчика»</b><span>переключатель в правом верхнем углу</span></li>
+      <li><b>Нажмите «Загрузить распакованное»</b><span>и выберите распакованную папку</span></li>
+      <li><b>Укажите сервер</b><span>Сборка обращается к <code id="apiBase">http://localhost:8080</code>. Другой адрес задаётся в настройках расширения: иконка Star Guard → «Настройки» → «Адрес сервера» → «Проверить соединение».</span>
+        <span id="localHint">Свой сервер поднимается из клона репозитория:</span>
+        <pre class="term" id="localCmd"><span class="pr">$</span> docker compose up --build -d</pre></li>
+      <li><b>Откройте любой репозиторий на GitHub</b><span>значок появится рядом с кнопкой Star</span></li>
+    </ol>
+  </section>
+</main>
+
+<footer class="foot">
+  <span class="brand"><span class="owl-mini" data-sprite="owl" aria-hidden="true"></span><span><span class="sha" id="sha">main</span> · Star Guard · StarChecker</span></span>
+  <a href="https://github.com/StarChecker/star-guard" rel="noopener">github.com/StarChecker/star-guard</a>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="star" viewBox="0 0 16 16"><path fill="currentColor" d="M8 .25a.75.75 0 0 1 .67.42l1.88 3.8 4.2.61a.75.75 0 0 1 .41 1.28l-3.04 2.96.72 4.18a.75.75 0 0 1-1.09.79L8 12.32l-3.75 1.97a.75.75 0 0 1-1.09-.79l.72-4.18L.84 6.36a.75.75 0 0 1 .41-1.28l4.2-.61L7.33.67A.75.75 0 0 1 8 .25z"/></symbol>
+</svg>
+
+<script src="ext/config.js"></script>
+<script src="ext/ui.js"></script>
+<script src="ext/theme.js"></script>
+<script src="ext/samples.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

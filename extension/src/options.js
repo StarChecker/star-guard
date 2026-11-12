@@ -1,7 +1,7 @@
 // Настройки: адрес сервера, окно, точки в списках.
 (function () {
   'use strict';
-  const DEFAULTS = { apiBase: 'http://localhost:8080', hours: 6, listDots: true };
+  const DEFAULTS = { apiBase: window.STAR_GUARD_CONFIG.apiBase, hours: 6, listDots: true };
   const $ = (id) => document.getElementById(id);
   const status = $('status');
 
@@ -16,6 +16,8 @@
   }
 
   async function load() {
+    $('apiBase').placeholder = DEFAULTS.apiBase;
+    $('apiDefault').textContent = DEFAULTS.apiBase;
     const stored = await chrome.storage.sync.get(DEFAULTS);
     $('apiBase').value = stored.apiBase;
     $('hours').value = String(stored.hours);
@@ -55,6 +57,10 @@
     show(response.ok ? 'Сервер отвечает' : 'Сервер недоступен: ' + (response.message || response.code), response.ok ? 'ok' : 'bad');
   }
 
+  $('reset').addEventListener('click', () => {
+    $('apiBase').value = DEFAULTS.apiBase;
+    show('Адрес по умолчанию подставлен — нажмите «Сохранить»');
+  });
   $('save').addEventListener('click', save);
   $('ping').addEventListener('click', async () => { if (await save()) ping(); });
   load();

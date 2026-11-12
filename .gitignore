@@ -6,3 +6,5 @@ target/
 
 .claude/
 .env
+# сборка лендинга (scripts/build-site.sh)
+_site/

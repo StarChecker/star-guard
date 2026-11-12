@@ -3,8 +3,10 @@
 // упирается в CORS. Принимаем только сообщения фиксированных типов с проверенным именем
 // репозитория — произвольный URL страница подсунуть не может.
 
+importScripts('config.js');
+
 const DEFAULT_SETTINGS = {
-  apiBase: 'http://localhost:8080',
+  apiBase: self.STAR_GUARD_CONFIG.apiBase,
   hours: 6,
   listDots: true,
 };

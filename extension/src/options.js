@@ -7,7 +7,7 @@
   const Period = window.StarGuardPeriod;
   const DEFAULTS = { apiBase: '', hours: 6, period: null, listDots: true };
   const SOURCES = { settings: 'из настроек', remote: 'из server.json в репозитории', default: 'запасной адрес сборки' };
-  const UNIT_DAYS = { days: 1, months: 30, years: 365 };
+  const DAY_MS = 24 * 60 * 60 * 1000;
   const $ = (id) => document.getElementById(id);
   const status = $('status');
   let shortHours = 6;   // короткое часовое окно для сводок индекса
@@ -38,31 +38,64 @@
     $('customPeriod').hidden = !on;
   }
 
-  function fillCustom(period) {
-    let unit = 'days';
-    let value = period.days || 30;
-    if (period.kind === 'hours') {
-      unit = 'hours';
-      value = period.hours || 6;
-    } else if (value >= 365 && value % 365 === 0) {
-      unit = 'years';
-      value = value / 365;
-    } else if (value >= 30 && value % 30 === 0) {
-      unit = 'months';
-      value = value / 30;
-    }
-    $('customLength').value = String(value);
-    $('customUnit').value = unit;
-    $('customTo').value = period.to || '';
-    syncCustomTo();
+  function todayIso() {
+    return new Date().toISOString().slice(0, 10);
   }
 
-  /** Для часов дата окончания не поддерживается — окно GH Archive всегда заканчивается сейчас. */
-  function syncCustomTo() {
-    const hours = $('customUnit').value === 'hours';
-    $('customTo').disabled = hours;
-    if (hours) $('customTo').value = '';
-    $('customLength').max = hours ? '24' : String(Period.MAX_DAYS);
+  function isoDaysAgo(days) {
+    const today = Date.parse(todayIso() + 'T00:00:00Z');
+    return new Date(today - (days - 1) * DAY_MS).toISOString().slice(0, 10);
+  }
+
+  /** Сколько дней назад была дата, включая сегодняшний день: 1 — сегодня. */
+  function daysAgo(iso) {
+    const at = Date.parse(iso + 'T00:00:00Z');
+    if (!Number.isFinite(at)) return null;
+    return Math.floor((Date.parse(todayIso() + 'T00:00:00Z') - at) / DAY_MS) + 1;
+  }
+
+  function daysWord(n) {
+    const m100 = n % 100;
+    const m10 = n % 10;
+    if (m100 >= 11 && m100 <= 14) return 'дней';
+    if (m10 === 1) return 'день';
+    if (m10 >= 2 && m10 <= 4) return 'дня';
+    return 'дней';
+  }
+
+  function fillCustom(period) {
+    const days = period.kind === 'days' ? period.days : 30;
+    $('customFrom').value = isoDaysAgo(Math.min(Period.MAX_DAYS, Math.max(1, days)));
+    $('customFrom').max = todayIso();
+    $('customFrom').min = isoDaysAgo(Period.MAX_DAYS);
+    updateCustomHint();
+  }
+
+  function updateCustomHint() {
+    const value = $('customFrom').value;
+    const hint = $('customHint');
+    hint.className = 'hint';
+    if (!value) {
+      hint.textContent = 'Выберите дату — посчитаем, сколько дней назад это было.';
+      return;
+    }
+    if (value > todayIso()) {
+      hint.textContent = 'Дата не может быть в будущем.';
+      hint.className = 'hint bad';
+      return;
+    }
+    const days = daysAgo(value);
+    if (days === null || days < 1) {
+      hint.textContent = 'Некорректная дата.';
+      hint.className = 'hint bad';
+      return;
+    }
+    if (days > Period.MAX_DAYS) {
+      hint.textContent = 'Слишком давно — максимум 10 лет (3650 дней).';
+      hint.className = 'hint bad';
+      return;
+    }
+    hint.textContent = `Это ${days} ${daysWord(days)} назад — оценим период с ${value} по сегодня.`;
   }
 
   async function load() {
@@ -80,43 +113,32 @@
       showCustom(false);
     } else {
       $('period').value = 'custom';
-      fillCustom(period.kind === 'days' ? period : { kind: 'days', days: 30, to: null });
+      fillCustom(period.kind === 'days' ? period : { kind: 'days', days: 30 });
       showCustom(true);
     }
     await refreshInfo(false);
   }
 
   function customPeriod() {
-    const length = Number($('customLength').value);
-    if (!Number.isInteger(length) || length < 1) {
-      show('Длина периода — целое число от 1', 'bad');
+    const value = $('customFrom').value;
+    if (!value) {
+      show('Выберите дату начала периода', 'bad');
       return null;
     }
-    if ($('customUnit').value === 'hours') {
-      if (length > 24) {
-        show('Для часов максимум — 24', 'bad');
-        return null;
-      }
-      return { kind: 'hours', hours: length };
-    }
-    const days = Math.round(length * UNIT_DAYS[$('customUnit').value]);
-    if (days < 1 || days > Period.MAX_DAYS) {
-      show('Период — от 1 дня до 10 лет', 'bad');
+    if (value > todayIso()) {
+      show('Дата не может быть в будущем', 'bad');
       return null;
     }
-    const to = $('customTo').value || null;
-    if (to) {
-      if (!Period.DATE_RE.test(to)) {
-        show('Некорректная дата окончания', 'bad');
-        return null;
-      }
-      const today = new Date().toISOString().slice(0, 10);
-      if (to > today) {
-        show('Дата окончания не может быть в будущем', 'bad');
-        return null;
-      }
+    const days = daysAgo(value);
+    if (days === null || days < 1) {
+      show('Некорректная дата', 'bad');
+      return null;
     }
-    return to ? { kind: 'days', days, to } : { kind: 'days', days };
+    if (days > Period.MAX_DAYS) {
+      show('Слишком давно — максимум 10 лет (3650 дней)', 'bad');
+      return null;
+    }
+    return { kind: 'days', days };
   }
 
   async function save() {
@@ -168,9 +190,10 @@
   $('period').addEventListener('change', () => {
     const custom = $('period').value === 'custom';
     showCustom(custom);
-    if (custom) syncCustomTo();
+    if (custom) updateCustomHint();
   });
-  $('customUnit').addEventListener('change', syncCustomTo);
+  $('customFrom').addEventListener('input', updateCustomHint);
+  $('customFrom').addEventListener('change', updateCustomHint);
   $('reset').addEventListener('click', () => {
     $('apiBase').value = '';
     show('Адрес будет браться автоматически — нажмите «Сохранить»');

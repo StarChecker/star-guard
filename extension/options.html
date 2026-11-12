@@ -11,12 +11,10 @@
     p.lead { color: var(--fgColor-muted); margin: 0 0 24px; }
     label { display: block; font-weight: 600; margin: 16px 0 6px; }
     .hint { color: var(--fgColor-muted); font-size: 12px; margin-top: 4px; }
+    .hint.bad { color: var(--fgColor-danger); }
     input[type=url], input[type=number], input[type=date], select { width: 100%; box-sizing: border-box; padding: 5px 12px; font: inherit; border-radius: 6px;
            border: 1px solid var(--borderColor-default); background: var(--bgColor-muted); color: inherit; }
     input[type=number], input[type=date] { width: 160px; }
-    .inline { display: flex; gap: 8px; align-items: center; }
-    .inline input[type=number] { width: 110px; }
-    .inline select { width: 140px; }
     #customPeriod[hidden] { display: none; }
     .row { display: flex; gap: 8px; align-items: center; margin-top: 16px; }
     button { font: inherit; font-weight: 500; padding: 5px 16px; border-radius: 6px; cursor: pointer;
@@ -61,20 +59,9 @@
       репозитория. В карточке на GitHub доступны быстрые пресеты, свой период — только здесь.</div>
 
     <div id="customPeriod" hidden>
-      <label for="customLength">Длина периода</label>
-      <div class="inline">
-        <input id="customLength" type="number" min="1" max="3650" step="1" value="30">
-        <select id="customUnit">
-          <option value="hours">часов</option>
-          <option value="days">дней</option>
-          <option value="months">месяцев</option>
-          <option value="years">лет</option>
-        </select>
-      </div>
-      <label for="customTo">Дата окончания (включительно)</label>
-      <input id="customTo" type="date">
-      <div class="hint">Необязательно. Если не указана — период заканчивается сегодня.
-        Для часов дата окончания недоступна: окно GH Archive всегда заканчивается сейчас.</div>
+      <label for="customFrom">Показывать с даты</label>
+      <input id="customFrom" type="date">
+      <div class="hint" id="customHint">Выберите дату — посчитаем, сколько дней назад это было.</div>
     </div>
 
     <label class="check"><input id="listDots" type="checkbox">

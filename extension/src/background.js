@@ -3,8 +3,10 @@
 // упирается в CORS. Принимаем только сообщения фиксированных типов с проверенным именем
 // репозитория — произвольный URL страница подсунуть не может.
 
+importScripts('config.js');
 importScripts('period.js');
 
+const CONFIG = self.STAR_GUARD_CONFIG;
 const Period = self.StarGuardPeriod;
 const clampHours = Period.clampHours;
 const normalizePeriod = Period.normalize;
@@ -13,9 +15,9 @@ const periodQuery = Period.query;
 const periodBody = Period.body;
 
 const DEFAULT_SETTINGS = {
-  apiBase: 'http://localhost:8080',
-  hours: 6,          // короткое окно для точек в списках и обратной совместимости
-  period: null,      // { kind: 'hours'|'days'|'all', hours?, days?, to? }
+  apiBase: '',  // пусто — адрес из server.json, иначе запасной из config.js
+  hours: 6,     // короткое окно для точек в списках и обратной совместимости
+  period: null, // { kind: 'hours'|'days'|'all', hours?, days?, to? }
   listDots: true,
 };
 
@@ -23,17 +25,74 @@ const REPO_RE = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
 const SCAN_ID_RE = /^[0-9a-f-]{36}$/i;
 const REPORT_TTL_MS = 5 * 60 * 1000;
 const SUMMARY_TTL_MS = 10 * 60 * 1000;
+const REMOTE_TTL_MS = 5 * 60 * 1000;
+const REMOTE_RETRY_MS = 30 * 1000;
 const BATCH_SIZE = 50;
 
 const reportCache = new Map();   // key → { at, value }
 const summaryCache = new Map();  // key → { at, value }
+let remote = null;               // { at, ttl, apiBase } — последний прочитанный server.json
+
+function normalizeBase(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+    return url.toString().replace(/\/+$/, '');
+  } catch (ignored) {
+    return '';
+  }
+}
+
+/** Адрес из server.json; при сбое — последний удачно прочитанный. */
+async function remoteApiBase() {
+  if (remote && Date.now() - remote.at < remote.ttl) {
+    return remote.apiBase;
+  }
+  let apiBase = '';
+  let ok = false;
+  if (CONFIG.remoteConfigUrl) {
+    try {
+      const response = await fetch(CONFIG.remoteConfigUrl, { cache: 'no-store' });
+      if (response.ok) {
+        apiBase = normalizeBase((await response.json()).apiBase);
+        ok = true;
+      }
+    } catch (ignored) {
+      ok = false;
+    }
+  }
+  if (ok) {
+    await chrome.storage.local.set({ remoteApiBase: apiBase });
+  } else {
+    apiBase = (await chrome.storage.local.get({ remoteApiBase: '' })).remoteApiBase;
+  }
+  if (remote && remote.apiBase !== apiBase) {
+    reportCache.clear();
+    summaryCache.clear();
+  }
+  remote = { at: Date.now(), ttl: ok ? REMOTE_TTL_MS : REMOTE_RETRY_MS, apiBase };
+  return apiBase;
+}
 
 async function settings() {
   const stored = await chrome.storage.sync.get(DEFAULT_SETTINGS);
-  const apiBase = String(stored.apiBase || DEFAULT_SETTINGS.apiBase).replace(/\/+$/, '');
+  let own = normalizeBase(stored.apiBase);
+  // раньше в настройки сохранялся сам адрес по умолчанию — считаем это «автоматически»
+  if (own === normalizeBase(CONFIG.apiBase)) own = '';
+  let apiBase = own;
+  let source = 'settings';
+  if (!apiBase) {
+    apiBase = await remoteApiBase();
+    source = 'remote';
+  }
+  if (!apiBase) {
+    apiBase = normalizeBase(CONFIG.apiBase);
+    source = 'default';
+  }
   const hours = clampHours(stored.hours, DEFAULT_SETTINGS.hours);
   return {
     apiBase,
+    source,
     hours,
     period: normalizePeriod(stored.period, hours),
     listDots: stored.listDots !== false,
@@ -186,6 +245,12 @@ async function handle(message) {
       const result = await call('/api/v1/index/repos?limit=1');
       const alive = result.ok || result.status === 503;
       return { ok: alive, code: alive ? 'OK' : result.code, apiBase: result.apiBase, message: result.message };
+    }
+    case 'serverInfo': {
+      // для настроек: откуда сейчас взят адрес; force — перечитать server.json
+      if (message.force) remote = null;
+      const { apiBase, source } = await settings();
+      return { ok: true, apiBase, source, remoteConfigUrl: CONFIG.remoteConfigUrl, fallback: CONFIG.apiBase };
     }
     case 'clearCache':
       reportCache.clear();

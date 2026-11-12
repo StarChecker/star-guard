@@ -25,7 +25,8 @@
   "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "http://localhost/*",
-    "http://127.0.0.1/*"
+    "http://127.0.0.1/*",
+    "http://201.51.23.42/*"
   ],
   "optional_host_permissions": [
     "https://*/*",

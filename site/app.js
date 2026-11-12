@@ -78,6 +78,8 @@
     $('#serverUrl').textContent = api;
     $('#serverNote').textContent = fromRemote ? 'адрес из server.json' : 'запасной адрес сборки';
     if (local) { st.classList.add('local'); $('#serverStatus').textContent = 'локальный'; return; }
+    // страница на https не может обращаться к http-серверу (mixed content) — проверить не получится
+    if (location.protocol === 'https:' && api.startsWith('http:')) { $('#serverStatus').textContent = 'http'; return; }
     $('#serverStatus').textContent = 'проверяем…';
     const ctrl = new AbortController();
     setTimeout(() => ctrl.abort(), 6000);

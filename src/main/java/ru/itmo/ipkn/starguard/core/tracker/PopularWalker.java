@@ -1,6 +1,7 @@
 package ru.itmo.ipkn.starguard.core.tracker;
 
 import ru.itmo.ipkn.starguard.core.github.GithubTrackerClient;
+import ru.itmo.ipkn.starguard.core.github.GithubUnavailableException;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -40,7 +41,7 @@ public class PopularWalker {
             int added = 0;
             int lowest = Integer.MAX_VALUE;
             for (int page = 0; page < SEARCH_PAGES && ranked.size() < size; page++) {
-                GithubTrackerClient.SearchPage result = client.search(query, after);
+                GithubTrackerClient.SearchPage result = search(query, after);
                 remaining = result.rateLimit().remaining();
                 for (GithubTrackerClient.RepoHit hit : result.repos()) {
                     lowest = Math.min(lowest, hit.stars());
@@ -69,6 +70,19 @@ public class PopularWalker {
             }
         }
         return new Result(ranked, remaining, complete && ranked.size() >= size);
+    }
+
+    // Search pages fail transiently (502, timeouts, empty data); one failed page must not drop the whole walk.
+    private GithubTrackerClient.SearchPage search(String query, String after) {
+        try {
+            return client.search(query, after);
+        } catch (GithubUnavailableException e) {
+            if (!"GITHUB_UNAVAILABLE".equals(e.code())) {
+                throw e;
+            }
+            pause();
+            return client.search(query, after);
+        }
     }
 
     private void pause() {

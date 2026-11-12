@@ -51,6 +51,17 @@ class PopularWalkerTest {
         assertThat(result.complete()).isFalse();
     }
 
+    @Test
+    void retriesTransientlyFailedSearchPageOnce() {
+        FakeSearch search = new FakeSearch().window("stars:>=1 sort:stars", repos(1, 300, 10_000), 5000);
+        search.failures = 1;
+
+        PopularWalker.Result result = new PopularWalker(new GithubTrackerClient(search), Duration.ZERO, 500).walk(300);
+
+        assertThat(result.ranked()).hasSize(300);
+        assertThat(result.complete()).isTrue();
+    }
+
     private static List<Map<String, Object>> repos(int from, int to, int topStars) {
         List<Map<String, Object>> repos = new ArrayList<>();
         for (int i = from; i <= to; i++) {
@@ -65,6 +76,7 @@ class PopularWalkerTest {
         private final Map<String, List<Map<String, Object>>> windows = new HashMap<>();
         private final Map<String, Integer> remaining = new HashMap<>();
         final List<String> queries = new ArrayList<>();
+        int failures;
 
         FakeSearch window(String query, List<Map<String, Object>> repos, int rateRemaining) {
             windows.put(query, repos);
@@ -78,6 +90,10 @@ class PopularWalkerTest {
             Map<String, Object> variables = (Map<String, Object>) body.get("variables");
             String query = variables.get("q").toString();
             Object after = variables.get("after");
+            if (after != null && failures > 0) {
+                failures--;
+                return Map.of("data", new HashMap<>());
+            }
             if (after == null) {
                 queries.add(query);
             }

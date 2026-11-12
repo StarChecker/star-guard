@@ -34,7 +34,7 @@ public class TrackerLifecycle {
             return;
         }
         scheduler.schedule(this::bootstrap, Instant.now());
-        scheduler.scheduleWithFixedDelay(this::poll, Instant.now().plus(properties.pollInterval()),
+        scheduler.scheduleAtFixedRate(this::poll, Instant.now().plus(properties.pollInterval()),
                 properties.pollInterval());
         scheduler.schedule(this::refreshPopular,
                 new CronTrigger(properties.popularRefreshCron(), TimeZone.getTimeZone(ZoneOffset.UTC)));

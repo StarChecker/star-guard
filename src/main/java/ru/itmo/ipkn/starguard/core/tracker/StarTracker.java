@@ -21,11 +21,16 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class StarTracker implements IntradaySource {
 
     private static final Logger log = LoggerFactory.getLogger(StarTracker.class);
+    private static final int POLL_THREADS = 2;
 
     private final TrackerStore store;
     private final GithubTrackerClient client;
@@ -65,36 +70,63 @@ public class StarTracker implements IntradaySource {
             Instant started = clock.instant();
             Instant at = started.truncatedTo(ChronoUnit.SECONDS);
             List<TrackerStore.TrackedRepo> repos = store.active(started);
+            List<List<TrackerStore.TrackedRepo>> batches = new ArrayList<>();
+            for (int from = 0; from < repos.size(); from += properties.batchSize()) {
+                batches.add(repos.subList(from, Math.min(repos.size(), from + properties.batchSize())));
+            }
             List<TrackerStore.Sample> samples = new ArrayList<>(repos.size());
             Set<Long> gone = new HashSet<>();
             int failed = 0;
             Integer remaining = null;
-            for (int from = 0; from < repos.size(); from += properties.batchSize()) {
-                List<TrackerStore.TrackedRepo> batch = repos.subList(from, Math.min(repos.size(), from + properties.batchSize()));
-                if (remaining != null && remaining < properties.rateLimitReserve()) {
-                    failed += repos.size() - from;
-                    log.warn("Star tracker stopped the poll: GitHub rate limit reserve reached ({} left)", remaining);
-                    break;
-                }
-                try {
-                    GithubTrackerClient.PollResult result = client.poll(batch.stream().map(TrackerStore.TrackedRepo::nodeId).toList());
-                    remaining = result.rateLimit().remaining();
-                    for (TrackerStore.TrackedRepo repo : batch) {
-                        GithubTrackerClient.Counts counts = result.counts().get(repo.nodeId());
-                        if (counts != null) {
-                            samples.add(new TrackerStore.Sample(repo.id(), counts.stars(), counts.forks()));
-                        } else if (result.missing().contains(repo.nodeId())) {
-                            gone.add(repo.id());
+            int next = 0;
+            // Two batches at a time: a poll fits the interval and stays under the GitHub secondary (compute time) limit.
+            try (ExecutorService executor = Executors.newFixedThreadPool(POLL_THREADS)) {
+                while (next < batches.size()) {
+                    if (remaining != null && remaining < properties.rateLimitReserve()) {
+                        log.warn("Star tracker stopped the poll: GitHub rate limit reserve reached ({} left)", remaining);
+                        break;
+                    }
+                    List<List<TrackerStore.TrackedRepo>> round = batches.subList(next, Math.min(batches.size(), next + POLL_THREADS));
+                    next += round.size();
+                    List<Future<GithubTrackerClient.PollResult>> futures = round.stream()
+                            .map(batch -> executor.submit(() -> client.poll(batch.stream().map(TrackerStore.TrackedRepo::nodeId).toList())))
+                            .toList();
+                    boolean stop = false;
+                    for (int i = 0; i < round.size(); i++) {
+                        List<TrackerStore.TrackedRepo> batch = round.get(i);
+                        try {
+                            GithubTrackerClient.PollResult result = futures.get(i).get();
+                            remaining = remaining == null ? result.rateLimit().remaining()
+                                    : Math.min(remaining, result.rateLimit().remaining());
+                            for (TrackerStore.TrackedRepo repo : batch) {
+                                GithubTrackerClient.Counts counts = result.counts().get(repo.nodeId());
+                                if (counts != null) {
+                                    samples.add(new TrackerStore.Sample(repo.id(), counts.stars(), counts.forks()));
+                                } else if (result.missing().contains(repo.nodeId())) {
+                                    gone.add(repo.id());
+                                }
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            failed += batch.size();
+                            stop = true;
+                        } catch (ExecutionException e) {
+                            failed += batch.size();
+                            if (!(e.getCause() instanceof GithubUnavailableException unavailable)) {
+                                throw new IllegalStateException("Star tracker batch failed", e.getCause());
+                            }
+                            log.warn("Star tracker batch failed: {}", unavailable.getMessage());
+                            stop |= "GITHUB_RATE_LIMITED".equals(unavailable.code())
+                                    || "GITHUB_TOKEN_REQUIRED".equals(unavailable.code());
                         }
                     }
-                } catch (GithubUnavailableException e) {
-                    failed += batch.size();
-                    log.warn("Star tracker batch failed: {}", e.getMessage());
-                    if ("GITHUB_RATE_LIMITED".equals(e.code()) || "GITHUB_TOKEN_REQUIRED".equals(e.code())) {
-                        failed += repos.size() - from - batch.size();
+                    if (stop) {
                         break;
                     }
                 }
+            }
+            for (int i = next; i < batches.size(); i++) {
+                failed += batches.get(i).size();
             }
             store.saveSamples(at, samples);
             store.remove(gone);

@@ -1,6 +1,7 @@
 package ru.itmo.ipkn.starguard.core.tracker;
 
 import com.zaxxer.hikari.HikariConfig;
+import org.springframework.beans.factory.annotation.Qualifier;
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -62,7 +63,9 @@ public class TrackerConfig {
 
     @Bean
     TrackerLifecycle trackerLifecycle(
-            StarTracker starTracker, ThreadPoolTaskScheduler trackerScheduler, TrackerProperties properties) {
+            StarTracker starTracker,
+            @Qualifier("trackerScheduler") ThreadPoolTaskScheduler trackerScheduler,
+            TrackerProperties properties) {
         return new TrackerLifecycle(starTracker, trackerScheduler, properties);
     }
 }

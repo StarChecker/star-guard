@@ -101,6 +101,24 @@ app:
       exit-days: 3            # ... 3 дня подряд
       max: 3000
       discovery-cron: "0 20 * * * *"
+  account-pool:
+    enabled: ${ACCOUNT_POOL_ENABLED:false} # нужен также app.tracker.enabled и GITHUB_TOKEN
+    max-accounts: 10000       # только top-N по оценке подозрительности
+    refresh-batch: 100        # максимум повторных проверок за проход
+    discovery-batch: 20       # одна страница форкеров одного отслеживаемого репозитория
+    interval: 10m
+    refresh-after: 1d
+    stale-after: 3d           # более старые профили исключаются из отчёта
+    min-stars: 1000
+    max-repos: 1              # публичные собственные репозитории без форков
+    max-followers: 5
+    max-contributions: 2      # contributionsCollection за последний год
+    burst-size: 10            # >=10 звёзд за минуту, минимум две такие минуты
+    burst-share: 0.5          # >=50% выборки должны попадать в такие минуты
+    min-matches: 5            # меньше — показывать на графике, но не менять score
+    full-signal-matches: 100
+    max-score-floor: 70       # signal только поднимает нижнюю границу score
+    rate-reserve: 1000        # оставлять очки GraphQL другим функциям
   scoring:
     mode: mock                # mock | real — общий переключатель реализаций C1–C5
     mock-mode: healthy        # профиль моков: healthy | borderline | suspicious (только для mock-проверок)

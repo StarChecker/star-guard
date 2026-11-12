@@ -91,7 +91,7 @@ public class RepoReportMapper {
                 timeline.suspiciousStars(),
                 timeline.suspiciousByCheck(),
                 timeline.points().stream()
-                        .map(point -> new StarTimelineDto.PointDto(point.at(), point.stars(), point.suspicious()))
+                        .map(point -> new StarTimelineDto.PointDto(point.at(), point.stars(), point.suspicious(), point.suspectAccounts()))
                         .toList());
     }
 }

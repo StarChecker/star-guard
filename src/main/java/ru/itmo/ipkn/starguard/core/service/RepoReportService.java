@@ -1,6 +1,8 @@
 package ru.itmo.ipkn.starguard.core.service;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import ru.itmo.ipkn.starguard.core.pool.AccountPoolReports;
 import org.springframework.stereotype.Service;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveFetchResult;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveProgress;
@@ -33,6 +35,9 @@ import java.util.List;
  */
 @Service
 public class RepoReportService {
+
+    @Autowired(required = false)
+    private AccountPoolReports accountPoolReports;
 
     private final GhArchiveClient archiveClient;
     private final TimeWindowCalculator windowCalculator;
@@ -160,7 +165,9 @@ public class RepoReportService {
                 ? githubScoringEngine.score(aggregate.snapshot())
                 : mockModeContext.callWith(mockMode, () -> scoringEngine.score(aggregate.snapshot()));
         StarTimeline timeline = timelineService.build(aggregate.snapshot(), score, data.stars());
-        return new RepoReport(
+        RepoReport report = new RepoReport(
                 repo, data.window(), aggregate.stats(), score, data.archive(), timeline, data.source());
+        return accountPoolReports == null ? report : accountPoolReports.enrich(report,
+                aggregate.snapshot().github() == null ? null : aggregate.snapshot().github().nodeId());
     }
 }

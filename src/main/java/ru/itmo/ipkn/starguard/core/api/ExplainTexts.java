@@ -19,6 +19,7 @@ import java.util.Optional;
 public final class ExplainTexts {
 
     private static final Map<String, String> TITLES = Map.ofEntries(
+            Map.entry("suspect_accounts", "Подозрительные аккаунты из пула"),
             Map.entry(CheckIds.BURST, "Всплески звёзд"),
             Map.entry(CheckIds.FRESH_ACCOUNTS, "Свежие и пустые аккаунты"),
             Map.entry(CheckIds.ENGAGEMENT, "Звёзды без активности"),
@@ -51,6 +52,8 @@ public final class ExplainTexts {
             return inactive;
         }
         return switch (check.checkId()) {
+            case "suspect_accounts" -> "Совпадений с пулом: %d. Проверены последние 100 звёзд каждого аккаунта; отсутствие совпадений не снижает риск. Это признаки, а не доказательство накрутки."
+                    .formatted(num(d, "matched_accounts"));
             case CheckIds.BURST -> "Пик — %d %s за 10 минут.".formatted(
                     stats.peakStars10m(), stars(stats.peakStars10m()));
             case CheckIds.FRESH_ACCOUNTS -> "%d из %d %s — от аккаунтов моложе %d дн. или без активности (%s)."
@@ -119,6 +122,8 @@ public final class ExplainTexts {
             return null;
         }
         return switch (reason.toString()) {
+            case "pool_empty" -> "В пуле пока нет актуальных подозрительных аккаунтов. Проверка не снижает риск.";
+            case "no_pool_matches" -> "Совпадений с неполной выборкой пула не найдено. Это не подтверждает органичность звёзд.";
             case "too_few_stars", "too_few_star_actors", "no_star_actors" ->
                     "Слишком мало звёзд за окно — проверка не участвует в оценке.";
             case "no_cross_repo_index" -> "Нет индекса звёзд по другим репозиториям — проверка не участвует в оценке.";

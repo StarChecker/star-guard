@@ -38,6 +38,8 @@ public class TrackerLifecycle {
                 properties.pollInterval());
         scheduler.schedule(this::refreshPopular,
                 new CronTrigger(properties.popularRefreshCron(), TimeZone.getTimeZone(ZoneOffset.UTC)));
+        scheduler.schedule(this::discoverRising,
+                new CronTrigger(properties.rising().discoveryCron(), TimeZone.getTimeZone(ZoneOffset.UTC)));
         scheduler.scheduleWithFixedDelay(this::maintain, Instant.now().plus(Duration.ofMinutes(10)),
                 Duration.ofHours(1));
     }
@@ -46,6 +48,7 @@ public class TrackerLifecycle {
         if (tracker.status().popular() == 0) {
             refreshPopular();
         }
+        discoverRising();
         poll();
     }
 
@@ -62,6 +65,14 @@ public class TrackerLifecycle {
             tracker.refreshPopular();
         } catch (RuntimeException e) {
             log.error("Star tracker popular refresh failed", e);
+        }
+    }
+
+    private void discoverRising() {
+        try {
+            tracker.discoverRising();
+        } catch (RuntimeException e) {
+            log.error("Star tracker rising discovery failed", e);
         }
     }
 

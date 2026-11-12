@@ -12,6 +12,9 @@ create table if not exists tracked_repo (
     last_polled_at timestamptz
 );
 
+alter table tracked_repo add column if not exists rising boolean not null default false;
+alter table tracked_repo add column if not exists slow_since timestamptz;
+
 create index if not exists tracked_repo_name_idx on tracked_repo (full_name_lc);
 create index if not exists tracked_repo_popular_idx on tracked_repo (popular_rank);
 create index if not exists tracked_repo_watched_idx on tracked_repo (watched_until);

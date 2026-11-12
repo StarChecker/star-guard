@@ -47,6 +47,7 @@ public class TrackerController {
                 status.active(),
                 status.popular(),
                 status.watched(),
+                status.rising(),
                 TrackerStatusDto.seconds(status.pollInterval()),
                 run == null ? null : run.at(),
                 run == null ? null : run.repos(),

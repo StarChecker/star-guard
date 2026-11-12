@@ -23,13 +23,19 @@ public class PopularWalker {
     }
 
     public Result walk(int size) {
+        return walk(size, "", 1);
+    }
+
+    public Result walk(int size, String filter, int minStars) {
+        String prefix = filter.isBlank() ? "" : filter.trim() + " ";
         List<TrackerStore.NewRepo> ranked = new ArrayList<>(size);
         Set<String> seen = new HashSet<>();
         Integer upper = null;
         Integer remaining = null;
         boolean complete = true;
         while (ranked.size() < size) {
-            String query = (upper == null ? "stars:>=1" : "stars:1.." + upper) + " sort:stars";
+            String query = prefix + (upper == null ? "stars:>=" + minStars : "stars:" + minStars + ".." + upper)
+                    + " sort:stars";
             String after = null;
             int added = 0;
             int lowest = Integer.MAX_VALUE;
@@ -58,7 +64,7 @@ public class PopularWalker {
                 break;
             }
             upper = added == 0 ? lowest - 1 : lowest;
-            if (upper < 1) {
+            if (upper < minStars) {
                 break;
             }
         }

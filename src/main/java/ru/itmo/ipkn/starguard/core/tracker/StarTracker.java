@@ -132,10 +132,55 @@ public class StarTracker implements IntradaySource {
         }
     }
 
+    public int discoverRising() {
+        TrackerProperties.Rising rising = properties.rising();
+        if (!rising.enabled()) {
+            return 0;
+        }
+        Instant now = clock.instant();
+        String created = now.minus(Duration.ofDays(rising.maxAgeDays())).atZone(java.time.ZoneOffset.UTC)
+                .toLocalDate().toString();
+        PopularWalker.Result result = new PopularWalker(client, properties.searchPageDelay(),
+                properties.rateLimitReserve()).walk(rising.max(), "created:>=" + created, rising.minStars());
+        if (result.rateRemaining() != null) {
+            lastRateRemaining = result.rateRemaining();
+        }
+        List<TrackerStore.NewRepo> fast = result.ranked().stream()
+                .filter(repo -> repo.createdAt() != null)
+                .filter(repo -> repo.stars() / (double) Math.max(1, Duration.between(repo.createdAt(), now).toDays())
+                        >= rising.dayStars())
+                .toList();
+        int added = store.markRising(fast, rising.max(), now);
+        log.info("Star tracker rising discovery: {} new repositories found, {} fast, {} started tracking",
+                result.ranked().size(), fast.size(), added);
+        return added;
+    }
+
+    public void reviewRising() {
+        TrackerProperties.Rising rising = properties.rising();
+        Instant now = clock.instant();
+        for (TrackerStore.RisingGrowth growth : store.risingGrowth(now.minus(Duration.ofDays(1)))) {
+            if (growth.starsDayAgo() == null) {
+                continue;
+            }
+            boolean slow = growth.stars() - growth.starsDayAgo() < rising.exitDayStars();
+            if (!slow) {
+                if (growth.slowSince() != null) {
+                    store.updateRising(growth.repoId(), true, null);
+                }
+            } else if (growth.slowSince() == null) {
+                store.updateRising(growth.repoId(), true, now);
+            } else if (!growth.slowSince().plus(Duration.ofDays(rising.exitDays())).isAfter(now)) {
+                store.updateRising(growth.repoId(), false, null);
+            }
+        }
+    }
+
     public void maintain() {
         Instant now = clock.instant();
         Instant hour = now.truncatedTo(ChronoUnit.HOURS);
         store.rollupHourly(hour.minus(Duration.ofHours(3)), hour);
+        reviewRising();
         store.purge(now.minus(properties.rawRetention()), now.minus(properties.hourlyRetention()),
                 now.minus(properties.hourlyRetention()));
         int expired = store.expireWatched(now);
@@ -211,7 +256,7 @@ public class StarTracker implements IntradaySource {
     public Status status() {
         Instant now = clock.instant();
         TrackerStore.Counts counts = store.counts(now);
-        return new Status(active(), counts.popular(), counts.watched(), store.lastRun().orElse(null),
+        return new Status(active(), counts.popular(), counts.watched(), counts.rising(), store.lastRun().orElse(null),
                 lastRateRemaining, properties.pollInterval());
     }
 
@@ -227,6 +272,7 @@ public class StarTracker implements IntradaySource {
             boolean active,
             int popular,
             int watched,
+            int rising,
             TrackerStore.PollRun lastRun,
             Integer rateLimitRemaining,
             Duration pollInterval

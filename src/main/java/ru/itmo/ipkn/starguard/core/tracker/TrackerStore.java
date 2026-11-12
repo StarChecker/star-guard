@@ -94,7 +94,7 @@ public class TrackerStore {
     public List<TrackedRepo> active(Instant now) {
         return jdbc.query("select " + TRACKED_COLUMNS + """
                 from tracked_repo
-                where popular_rank is not null or watched_until > ?
+                where popular_rank is not null or watched_until > ? or rising
                 order by id
                 """, TRACKED, timestamp(now));
     }
@@ -170,7 +170,7 @@ public class TrackerStore {
     public int expireWatched(Instant now) {
         return jdbc.update("""
                 delete from tracked_repo
-                where popular_rank is null and (watched_until is null or watched_until < ?)
+                where popular_rank is null and not rising and (watched_until is null or watched_until < ?)
                 """, timestamp(now));
     }
 
@@ -207,9 +207,46 @@ public class TrackerStore {
     public Counts counts(Instant now) {
         return jdbc.queryForObject("""
                 select count(*) filter (where popular_rank is not null),
-                       count(*) filter (where popular_rank is null and watched_until > ?)
+                       count(*) filter (where popular_rank is null and watched_until > ?),
+                       count(*) filter (where rising)
                 from tracked_repo
-                """, (rs, row) -> new Counts(rs.getInt(1), rs.getInt(2)), timestamp(now));
+                """, (rs, row) -> new Counts(rs.getInt(1), rs.getInt(2), rs.getInt(3)), timestamp(now));
+    }
+
+    public int markRising(List<NewRepo> repos, int max, Instant now) {
+        Integer current = jdbc.queryForObject("select count(*) from tracked_repo where rising", Integer.class);
+        int free = Math.max(0, max - (current == null ? 0 : current));
+        int added = 0;
+        for (NewRepo repo : repos) {
+            if (added >= free) {
+                break;
+            }
+            added += jdbc.update("""
+                    insert into tracked_repo (node_id, full_name, full_name_lc, repo_created_at, stars, forks,
+                                              tracked_since, rising)
+                    values (?, ?, ?, ?, ?, ?, ?, true)
+                    on conflict (node_id) do update set rising = true, slow_since = null
+                    where not tracked_repo.rising
+                    """, repo.nodeId(), repo.fullName(), lower(repo.fullName()), timestamp(repo.createdAt()),
+                    repo.stars(), repo.forks(), timestamp(now));
+        }
+        return added;
+    }
+
+    public List<RisingGrowth> risingGrowth(Instant dayAgo) {
+        return jdbc.query("""
+                select t.id, t.stars, t.slow_since,
+                       (select h.stars from star_hourly h
+                        where h.repo_id = t.id and h.hour_at <= ? order by h.hour_at desc limit 1) as day_ago
+                from tracked_repo t
+                where t.rising
+                """, (rs, row) -> new RisingGrowth(rs.getLong(1), rs.getInt(2), instant(rs.getTimestamp(3)),
+                (Integer) rs.getObject(4)), timestamp(dayAgo));
+    }
+
+    public void updateRising(long repoId, boolean rising, Instant slowSince) {
+        jdbc.update("update tracked_repo set rising = ?, slow_since = ? where id = ?",
+                rising, timestamp(slowSince), repoId);
     }
 
     private static String lower(String value) {
@@ -250,6 +287,9 @@ public class TrackerStore {
     public record PollRun(Instant at, int repos, int failed, int durationMs, Integer rateRemaining) {
     }
 
-    public record Counts(int popular, int watched) {
+    public record RisingGrowth(long repoId, int stars, Instant slowSince, Integer starsDayAgo) {
+    }
+
+    public record Counts(int popular, int watched, int rising) {
     }
 }

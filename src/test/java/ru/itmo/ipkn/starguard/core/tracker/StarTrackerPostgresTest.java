@@ -67,7 +67,7 @@ class StarTrackerPostgresTest {
         jdbc.update("truncate tracked_repo, star_sample, star_hourly, poll_run");
         store = new TrackerStore(jdbc, new TransactionTemplate(new DataSourceTransactionManager(dataSource)));
         TrackerProperties properties = new TrackerProperties(true, null, null, null, null, null, 2, null,
-                Duration.ofDays(30), 2, null, null, 100, Duration.ZERO, 100, 7);
+                Duration.ofDays(30), 2, null, null, 100, Duration.ZERO, 100, 7, null);
         tracker = new StarTracker(store, new GithubTrackerClient(graphql), properties,
                 new GithubProperties(true, null, "token", null, null, null, null, null), clock);
     }

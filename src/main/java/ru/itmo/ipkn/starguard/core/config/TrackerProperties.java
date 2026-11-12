@@ -21,8 +21,34 @@ public record TrackerProperties(
         Integer rateLimitReserve,
         Duration searchPageDelay,
         Integer batchSize,
-        Integer profileDays
+        Integer profileDays,
+        Rising rising
 ) {
+
+    public record Rising(
+            Boolean enabled,
+            Integer maxAgeDays,
+            Integer minStars,
+            Integer dayStars,
+            Integer exitDayStars,
+            Integer exitDays,
+            Integer max,
+            String discoveryCron
+    ) {
+        public Rising {
+            enabled = enabled == null || enabled;
+            maxAgeDays = maxAgeDays == null ? 30 : maxAgeDays;
+            minStars = minStars == null ? 100 : minStars;
+            dayStars = dayStars == null ? 100 : dayStars;
+            exitDayStars = exitDayStars == null ? 20 : exitDayStars;
+            exitDays = exitDays == null ? 3 : exitDays;
+            max = max == null ? 3000 : max;
+            discoveryCron = discoveryCron == null || discoveryCron.isBlank() ? "0 20 * * * *" : discoveryCron;
+            if (maxAgeDays < 1 || minStars < 1 || dayStars < 1 || exitDayStars < 0 || exitDays < 1 || max < 0) {
+                throw new IllegalArgumentException("Invalid app.tracker.rising configuration");
+            }
+        }
+    }
 
     public static final String ENABLED_PROPERTY = "app.tracker.enabled";
 
@@ -44,6 +70,7 @@ public record TrackerProperties(
         searchPageDelay = searchPageDelay == null ? Duration.ofMillis(250) : searchPageDelay;
         batchSize = batchSize == null ? 100 : batchSize;
         profileDays = profileDays == null ? 7 : profileDays;
+        rising = rising == null ? new Rising(null, null, null, null, null, null, null, null) : rising;
         if (poolSize < 1) {
             throw new IllegalArgumentException("app.tracker.pool-size must be >= 1");
         }
@@ -72,6 +99,6 @@ public record TrackerProperties(
 
     public static TrackerProperties defaults() {
         return new TrackerProperties(null, null, null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null);
+                null, null, null, null);
     }
 }

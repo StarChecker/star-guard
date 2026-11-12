@@ -7,6 +7,7 @@ public record TrackerStatusDto(
         boolean active,
         int popularRepos,
         int watchedRepos,
+        int risingRepos,
         long pollIntervalSeconds,
         Instant lastPollAt,
         Integer lastPollRepos,

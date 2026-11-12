@@ -92,6 +92,15 @@ app:
     raw-retention: 26h        # снимки с шагом опроса
     hourly-retention: 8d      # почасовые значения для суточного профиля
     rate-limit-reserve: 500   # не тратить последние очки GraphQL
+    rising:                   # быстрорастущие новые репозитории, ловим со старта
+      enabled: true
+      max-age-days: 30        # ищем репозитории не старше
+      min-stars: 100
+      day-stars: 100          # вход: в среднем от 100 звёзд в день с создания
+      exit-day-stars: 20      # выход: меньше 20 звёзд за сутки
+      exit-days: 3            # ... 3 дня подряд
+      max: 3000
+      discovery-cron: "0 20 * * * *"
   scoring:
     mode: mock                # mock | real — общий переключатель реализаций C1–C5
     mock-mode: healthy        # профиль моков: healthy | borderline | suspicious (только для mock-проверок)

@@ -64,10 +64,37 @@
     $('#demo').hidden = true;
   }
 
-  // ---------- адрес сервера, зашитый в сборку ----------
-  const api = (window.STAR_GUARD_CONFIG && window.STAR_GUARD_CONFIG.apiBase) || 'http://localhost:8080';
-  $('#apiBase').textContent = api;
-  if (!/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(api)) { $('#localHint').hidden = true; $('#localCmd').hidden = true; }
+  // ---------- адрес сервера: server.json из репозитория (меняется без деплоя), иначе запасной ----------
+  const CFG = window.STAR_GUARD_CONFIG || { apiBase: 'http://localhost:8080', remoteConfigUrl: '' };
+  const isLocal = (u) => /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(u);
+  function showServer(api, fromRemote) {
+    $('#apiBase').textContent = api;
+    const local = isLocal(api);
+    $('#localHint').hidden = !local;
+    $('#localCmd').hidden = !local;
+    const st = $('#serverState');
+    st.hidden = false;
+    st.className = 'server-state';
+    $('#serverUrl').textContent = api;
+    $('#serverNote').textContent = fromRemote ? 'адрес из server.json' : 'запасной адрес сборки';
+    if (local) { st.classList.add('local'); $('#serverStatus').textContent = 'локальный'; return; }
+    $('#serverStatus').textContent = 'проверяем…';
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 6000);
+    fetch(api + '/api/v1/index/repos?limit=1', { signal: ctrl.signal, headers: { Accept: 'application/json' } })
+      .then((r) => { const up = r.ok || r.status === 503; st.classList.add(up ? 'up' : 'down'); $('#serverStatus').textContent = up ? 'онлайн' : 'недоступен'; })
+      .catch(() => { st.classList.add('down'); $('#serverStatus').textContent = 'недоступен'; });
+  }
+  (async () => {
+    let api = '';
+    if (CFG.remoteConfigUrl) {
+      try {
+        const r = await fetch(CFG.remoteConfigUrl, { cache: 'no-store' });
+        if (r.ok) { const u = new URL(String((await r.json()).apiBase || '')); if (/^https?:$/.test(u.protocol)) api = u.toString().replace(/\/+$/, ''); }
+      } catch (ignored) { api = ''; }
+    }
+    showServer(api || CFG.apiBase, !!api);
+  })();
 
   // ---------- тост и копирование ----------
   const toast = $('#toast');

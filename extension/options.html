@@ -17,6 +17,8 @@
     button { font: inherit; font-weight: 500; padding: 5px 16px; border-radius: 6px; cursor: pointer;
              border: 1px solid var(--borderColor-default); background: var(--bgColor-muted); color: inherit; }
     button.primary { background: #1f883d; color: #fff; border-color: transparent; }
+    a { color: var(--fgColor-accent); }
+    button.link { padding: 0; border: 0; background: none; color: var(--fgColor-accent); font-weight: 400; font-size: inherit; }
     #status { color: var(--fgColor-muted); }
     #status.ok { color: var(--fgColor-success); }
     #status.bad { color: var(--fgColor-danger); }
@@ -30,8 +32,11 @@
     <p class="lead">Признаки накрутки звёзд прямо на страницах GitHub.</p>
 
     <label for="apiBase">Адрес сервера</label>
-    <input id="apiBase" type="url" placeholder="http://localhost:8080" required>
-    <div class="hint">Сервер Star Guard (бэкенд из этого репозитория). Для внешнего адреса браузер попросит разрешение.</div>
+    <input id="apiBase" type="url" placeholder="автоматически">
+    <div class="hint">Сейчас: <b id="apiCurrent">…</b> — <span id="apiSource"></span>.</div>
+    <div class="hint">Оставьте поле пустым (<button id="reset" type="button" class="link">автоматически</button>) — адрес
+      возьмётся из <a id="remoteLink" target="_blank" rel="noopener">server.json</a> в репозитории и обновится сам, когда его поменяют.
+      Свой адрес перекрывает его; для внешнего адреса браузер попросит разрешение.</div>
 
     <label for="hours">Окно анализа</label>
     <select id="hours">
@@ -51,6 +56,7 @@
       <span id="status" role="status"></span>
     </div>
   </main>
+  <script src="src/config.js"></script>
   <script src="src/theme.js"></script>
   <script src="src/options.js"></script>
 </body>

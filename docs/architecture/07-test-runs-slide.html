@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<title>Star Guard: score репозиториев</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+:root{--bg:#F4F7FA;--ink:#0E1C2A;--muted:#66778A;--track:#E6ECF2;--line:#D3DDE6;
+  --low:#3B78AD;--medium:#C98A2A;--high:#D2672F;--critical:#C0403B;}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#0C151E;--ink:#E4ECF3;--muted:#8A9CAD;--track:#17232F;--line:#243442;
+  --low:#6AA6D9;--medium:#E0A84A;--high:#EC8750;--critical:#E5655E;}}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0C151E;--ink:#E4ECF3;--muted:#8A9CAD;--track:#17232F;--line:#243442;
+  --low:#6AA6D9;--medium:#E0A84A;--high:#EC8750;--critical:#E5655E;}
+body{background:var(--bg);color:var(--ink);font:15px/1.35 "IBM Plex Sans",system-ui,-apple-system,sans-serif;padding-block:36px;padding-inline:16px}
+.slide{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:26px}
+h1{margin:0;font-size:clamp(24px,3vw,36px);font-weight:600;letter-spacing:-.01em;text-wrap:balance}
+.sub{margin:6px 0 0;color:var(--muted);font-size:15px}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.kpi{border-top:3px solid var(--c);padding-top:10px}
+.kpi strong{display:block;font:500 clamp(26px,3vw,34px)/1.1 "IBM Plex Mono",ui-monospace,monospace}
+.kpi span{color:var(--muted);font-size:14px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:28px 56px}
+h2{margin:0 0 6px;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h2 + .scale{margin-bottom:2px}
+.group + .group{margin-top:18px}
+.row,.scale{display:grid;grid-template-columns:minmax(0,13em) 1fr 2.4em;gap:12px;align-items:center}
+.row{padding:5px 0;border-top:1px solid var(--line)}
+.n{min-width:0}
+.n b{display:block;font-weight:500;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.n small{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t{position:relative;height:12px;border-radius:2px;background:linear-gradient(90deg,var(--track) 0 30%,transparent 30% 60%,var(--track) 60% 85%,transparent 85%);box-shadow:inset 0 0 0 1px var(--line)}
+.t i{position:absolute;inset:0 auto 0 0;border-radius:2px}
+.s{font:500 16px "IBM Plex Mono",ui-monospace,monospace;text-align:right;font-variant-numeric:tabular-nums}
+.scale > div:nth-child(2){position:relative;height:14px;font-size:10px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.scale em{position:absolute;font-style:normal;top:0}
+.foot{display:flex;flex-wrap:wrap;gap:6px 24px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:12px}
+.foot b{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+@media (max-width:760px){.cols,.kpis{grid-template-columns:1fr}}
+</style>
+<div class="slide">
+  <header>
+    <h1>Star Guard отделяет накрутку от органики</h1>
+    <p class="sub">16 реальных репозиториев, режим GitHub API, окно 30 дней. Цвет полосы: уровень, который выдал сервис.</p>
+  </header>
+  <div class="kpis">
+    <div class="kpi" style="--c:var(--critical)"><strong>5 / 5</strong><span>накрученных получили medium и выше (score 44-85)</span></div>
+    <div class="kpi" style="--c:var(--low)"><strong>9 / 9</strong><span>органических остались в low (score 0-20)</span></div>
+    <div class="kpi" style="--c:var(--medium)"><strong>2</strong><span>ложных срабатывания: вирусные волны, по дневным данным неотличимы</span></div>
+  </div>
+  <div class="cols">
+    <div>
+      <section class="group" id="bad"><h2>Известная накрутка</h2></section>
+      <section class="group" id="viral"><h2>Органика с вирусной волной</h2></section>
+    </div>
+    <div>
+      <section class="group" id="ok"><h2>Органика</h2></section>
+    </div>
+  </div>
+  <div class="foot">
+    <span><b style="background:var(--low)"></b>low 0-29</span>
+    <span><b style="background:var(--medium)"></b>medium 30-59</span>
+    <span><b style="background:var(--high)"></b>high 60-84</span>
+    <span><b style="background:var(--critical)"></b>critical 85+</span>
+    <span>Подпись под именем: главный сигнал, который поднял score.</span>
+  </div>
+</div>
+<script>
+const ROWS={
+ bad:[["Minireel/HGhub",85,"1 коммит на 8,5k звёзд, 37% форков"],["deepseek-ai/DeepInfer",67,"всплеск x357 за один день"],["janestreet/agent_skills",53,"2 коммита на 7,3k звёзд"],["huamidev/GestaltX",47,"2,4k форков на 6,7k звёзд"],["Adkid-Zephyr/anti-defensive-writing-Skill",44,"0 коммитов на 1,5k звёзд"]],
+ viral:[["sherlock-project/sherlock",96,"7 дней всплесков, до x18"],["dockur/windows",36,"всплеск x11 за один день"]],
+ ok:[["spring-projects/spring-boot",20,"всплеск x9, ниже порога"],["facebook/react",13,"слабый всплеск"],["microsoft/vscode",13,"слабый всплеск"],["torvalds/linux",0,"без сигналов, 4,4k звёзд"],["ollama/ollama",0,"без сигналов, 4,2k звёзд"],["sindresorhus/awesome",0,"ровный приток, 17,9k звёзд"],["codecrafters-io/build-your-own-x",0,"ровный приток, 10,1k звёзд"],["donnemartin/system-design-primer",0,"ровный приток, 4k звёзд"],["NotRexed/Hookshot",0,"молодой, разработка идёт"]]};
+const level=s=>s>=85?"critical":s>=60?"high":s>=30?"medium":"low";
+for(const[id,rows]of Object.entries(ROWS)){const root=document.getElementById(id);
+  const scale=document.createElement("div");scale.className="scale";
+  scale.innerHTML='<div></div><div><em style="left:0">low</em><em style="left:30%">medium</em><em style="left:60%">high</em><em style="left:85%">crit</em></div><div></div>';
+  root.append(scale);
+  for(const[n,s,why]of rows){const r=document.createElement("div");r.className="row";
+    r.innerHTML=`<div class="n"><b title="${n}">${n}</b><small title="${why}">${why}</small></div><div class="t" role="img" aria-label="${n}: ${s}"><i style="width:${Math.max(s,0.8)}%;background:var(--${level(s)})"></i></div><div class="s">${s}</div>`;
+    root.append(r);}}
+</script>
+
+</body>
+</html>

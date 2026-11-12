@@ -1,12 +1,15 @@
 package ru.itmo.ipkn.starguard.core.service;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import ru.itmo.ipkn.starguard.core.pool.AccountPoolReports;
 import org.springframework.stereotype.Service;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveFetchResult;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveProgress;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveUnavailableException;
 import ru.itmo.ipkn.starguard.core.archive.GhArchiveClient;
 import ru.itmo.ipkn.starguard.core.archive.TimeWindowCalculator;
+import ru.itmo.ipkn.starguard.core.config.ReportProperties;
 import ru.itmo.ipkn.starguard.core.config.ScoringProperties;
 import ru.itmo.ipkn.starguard.core.domain.DataSource;
 import ru.itmo.ipkn.starguard.core.domain.EventType;
@@ -20,6 +23,7 @@ import ru.itmo.ipkn.starguard.core.scoring.MockMode;
 import ru.itmo.ipkn.starguard.core.scoring.MockModeContext;
 import ru.itmo.ipkn.starguard.core.scoring.RepoScore;
 import ru.itmo.ipkn.starguard.core.scoring.ScoringEngine;
+import ru.itmo.ipkn.starguard.core.scoring.github.GithubScoringEngine;
 import ru.itmo.ipkn.starguard.core.stats.RepoAggregate;
 import ru.itmo.ipkn.starguard.core.stats.StatsAggregator;
 
@@ -32,6 +36,9 @@ import java.util.List;
 @Service
 public class RepoReportService {
 
+    @Autowired(required = false)
+    private AccountPoolReports accountPoolReports;
+
     private final GhArchiveClient archiveClient;
     private final TimeWindowCalculator windowCalculator;
     private final StatsAggregator aggregator;
@@ -42,6 +49,8 @@ public class RepoReportService {
     private final StarTimelineService timelineService;
     private final AccountAgeEnricher accountAgeEnricher;
     private final GithubHistoryService historyService;
+    private final GithubScoringEngine githubScoringEngine;
+    private final ReportProperties reportProperties;
 
     public RepoReportService(
             GhArchiveClient archiveClient,
@@ -53,7 +62,9 @@ public class RepoReportService {
             ObjectProvider<RepoDataProvider> indexedDataProvider,
             StarTimelineService timelineService,
             AccountAgeEnricher accountAgeEnricher,
-            GithubHistoryService historyService) {
+            GithubHistoryService historyService,
+            GithubScoringEngine githubScoringEngine,
+            ReportProperties reportProperties) {
         this.archiveClient = archiveClient;
         this.windowCalculator = windowCalculator;
         this.aggregator = aggregator;
@@ -64,6 +75,8 @@ public class RepoReportService {
         this.timelineService = timelineService;
         this.accountAgeEnricher = accountAgeEnricher;
         this.historyService = historyService;
+        this.githubScoringEngine = githubScoringEngine;
+        this.reportProperties = reportProperties;
     }
 
     /** Можно ли анализировать любой репозиторий по истории GitHub (нужен токен). */
@@ -76,10 +89,35 @@ public class RepoReportService {
      * с временем и возрастом аккаунтов — работает для любого существующего репозитория.
      */
     public RepoReport historyReport(RepoRef repo, MockMode requestedMockMode, ArchiveProgress progress) {
-        return buildReport(repo, historyService.load(repo, progress), requestedMockMode);
+        return historyReport(repo, null, requestedMockMode, progress);
+    }
+
+    public RepoReport historyReport(
+            RepoRef repo, Integer requestedDays, MockMode requestedMockMode, ArchiveProgress progress) {
+        return buildReport(repo, historyService.load(repo, requestedDays, progress), requestedMockMode);
+    }
+
+    public boolean githubFirst() {
+        return switch (reportProperties.source()) {
+            case GITHUB -> true;
+            case INDEX -> false;
+            case AUTO -> historyService.available();
+        };
     }
 
     public RepoReport getReport(RepoRef repo, Integer requestedHours, MockMode requestedMockMode) {
+        return getReport(repo, requestedHours, null, requestedMockMode);
+    }
+
+    public RepoReport getReport(
+            RepoRef repo, Integer requestedHours, Integer requestedDays, MockMode requestedMockMode) {
+        if (githubFirst()) {
+            return historyReport(repo, requestedDays, requestedMockMode, ArchiveProgress.NONE);
+        }
+        return indexReport(repo, requestedHours, requestedMockMode);
+    }
+
+    public RepoReport indexReport(RepoRef repo, Integer requestedHours, MockMode requestedMockMode) {
         RepoDataProvider indexed = indexedDataProvider.getIfAvailable();
         if (indexed != null) {
             return buildReport(repo, indexed.load(repo, requestedHours), requestedMockMode);
@@ -123,11 +161,13 @@ public class RepoReportService {
                 ? scoringProperties.mockMode()
                 : requestedMockMode;
         RepoAggregate aggregate = accountAgeEnricher.enrich(data.aggregate(), data.starRank());
-        RepoScore score = mockModeContext.callWith(
-                mockMode,
-                () -> scoringEngine.score(aggregate.snapshot()));
+        RepoScore score = aggregate.snapshot().github() != null
+                ? githubScoringEngine.score(aggregate.snapshot())
+                : mockModeContext.callWith(mockMode, () -> scoringEngine.score(aggregate.snapshot()));
         StarTimeline timeline = timelineService.build(aggregate.snapshot(), score, data.stars());
-        return new RepoReport(
+        RepoReport report = new RepoReport(
                 repo, data.window(), aggregate.stats(), score, data.archive(), timeline, data.source());
+        return accountPoolReports == null ? report : accountPoolReports.enrich(report,
+                aggregate.snapshot().github() == null ? null : aggregate.snapshot().github().nodeId());
     }
 }

@@ -25,10 +25,7 @@ public class DefaultScoringEngine implements ScoringEngine {
     private static final Logger log = LoggerFactory.getLogger(DefaultScoringEngine.class);
 
     private static final Comparator<RepoCheck> CHECK_ORDER = Comparator
-            .comparingInt((RepoCheck check) -> {
-                int index = CheckIds.ALL.indexOf(check.id());
-                return index >= 0 ? index : Integer.MAX_VALUE;
-            })
+            .comparingInt((RepoCheck check) -> CheckIds.order(check.id()))
             .thenComparing(RepoCheck::id);
 
     private final List<RepoCheck> checks;

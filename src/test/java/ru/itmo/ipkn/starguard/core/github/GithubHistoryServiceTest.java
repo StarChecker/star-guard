@@ -1,88 +1,126 @@
 package ru.itmo.ipkn.starguard.core.github;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveProgress;
+import ru.itmo.ipkn.starguard.core.archive.InvalidWindowException;
 import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
 import ru.itmo.ipkn.starguard.core.config.GithubHistoryProperties;
 import ru.itmo.ipkn.starguard.core.config.GithubProperties;
 import ru.itmo.ipkn.starguard.core.domain.DataSource;
-import ru.itmo.ipkn.starguard.core.domain.EventType;
-import ru.itmo.ipkn.starguard.core.domain.GhEvent;
+import ru.itmo.ipkn.starguard.core.domain.GithubSignals;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
+import ru.itmo.ipkn.starguard.core.service.IntradaySource;
 import ru.itmo.ipkn.starguard.core.service.RepoData;
-import ru.itmo.ipkn.starguard.core.stats.StatsAggregator;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class GithubHistoryServiceTest {
 
-    private static final Instant NOW = Instant.parse("2026-11-11T12:30:00Z");
+    private static final Instant NOW = Instant.parse("2026-11-12T10:30:00Z");
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
     private static final RepoRef REPO = new RepoRef("acme", "tool");
+    private static final long WEEK_NOV_01 = LocalDate.parse("2026-11-01").atStartOfDay(ZoneOffset.UTC).toEpochSecond();
+    private static final long WEEK_NOV_08 = LocalDate.parse("2026-11-08").atStartOfDay(ZoneOffset.UTC).toEpochSecond();
 
     @Test
-    void buildsReportDataFromStarsAndActivity() {
-        // 70 свежих аккаунтов за час + 30 старых звёзд, растянутых на 20 дней
-        List<Map<String, Object>> stars = new ArrayList<>();
-        for (int i = 0; i < 30; i++) {
-            stars.add(star(NOW.minus(Duration.ofDays(20 - i / 2)), 1000 + i, "2015-01-01T00:00:00Z"));
-        }
-        for (int i = 0; i < 70; i++) {
-            stars.add(star(Instant.parse("2026-11-10T10:00:00Z").plusSeconds(i * 40L), 5000 + i, "2026-11-01T00:00:00Z"));
-        }
-        FakeGraphql graphql = new FakeGraphql()
-                .starsPage(null, stars, false, null, 100)
-                .activity(activity(2, 1, 3));
-        List<int[]> progress = new ArrayList<>();
+    void buildsDailyHistoryAndWindowActivityForNewRepository() {
+        FakeRest rest = new FakeRest().page(1, false,
+                week(WEEK_NOV_08, 1617, 2859, 1161, 202, 70, 0, 0),
+                week(WEEK_NOV_01, 0, 0, 273, 680, 328, 536, 682));
+        FakeGraphql graphql = new FakeGraphql().repository("2026-11-03T14:04:27Z", 8408, 4394,
+                forks(3102, false, List.of()), 1, List.of("farm-owner"), 38, 26);
 
-        RepoData data = service(graphql, 3000).load(REPO, (done, total) -> progress.add(new int[]{done, total}));
+        RepoData data = service(graphql, rest, null, GithubHistoryProperties.defaults())
+                .load(REPO, ArchiveProgress.NONE);
 
+        GithubSignals github = data.aggregate().snapshot().github();
+        assertThat(github.firstDay()).isEqualTo(LocalDate.parse("2026-11-03"));
+        assertThat(github.dailyStars()).containsExactly(273, 680, 328, 536, 682, 1617, 2859, 1161, 202, 70);
+        assertThat(github.totalStars()).isEqualTo(8408);
+        assertThat(github.repoCreatedAt()).isEqualTo(Instant.parse("2026-11-03T14:04:27Z"));
+        assertThat(github.activity().stars()).isEqualTo(8408);
+        assertThat(github.activity().forks()).isEqualTo(3102);
+        assertThat(github.activity().issues()).isEqualTo(38);
+        assertThat(github.activity().pullRequests()).isEqualTo(26);
+        assertThat(github.activity().commits()).isEqualTo(1);
+        assertThat(github.activity().contributors()).isEqualTo(1);
+        assertThat(github.intraday()).isNull();
+        assertThat(data.window().from()).isEqualTo(Instant.parse("2026-10-14T00:00:00Z"));
+        assertThat(data.window().to()).isEqualTo(Instant.parse("2026-11-12T11:00:00Z"));
+        assertThat(data.aggregate().stats().counts().stars()).isEqualTo(8408);
+        assertThat(data.aggregate().stats().counts().pushes()).isEqualTo(1);
         assertThat(data.source().type()).isEqualTo(DataSource.Type.GITHUB_API);
-        assertThat(data.source().starsSampled()).isEqualTo(100);
-        assertThat(data.source().starsTotal()).isEqualTo(100);
-        assertThat(data.window().to()).isEqualTo(Instant.parse("2026-11-11T13:00:00Z"));
-        assertThat(data.window().from()).isEqualTo(Instant.parse("2026-10-12T12:00:00Z"));
-        assertThat(data.stars()).hasSize(100);
-        assertThat(data.aggregate().stats().counts().stars()).isEqualTo(100);
-        assertThat(data.aggregate().stats().counts().forks()).isEqualTo(2);
-        assertThat(data.aggregate().stats().counts().issues()).isEqualTo(1);
-        assertThat(data.aggregate().stats().counts().pushes()).isEqualTo(1); // 3 коммита одного автора в один час
-        assertThat(data.archive().events())
-                .filteredOn(event -> event.type() == EventType.WATCH)
-                .allSatisfy(event -> assertThat(event.actorCreatedAt()).isNotNull());
-        assertThat(data.aggregate().stats().peakStars10m()).isGreaterThanOrEqualTo(14);
-        assertThat(progress.getLast()).containsExactly(2, 2);
+        assertThat(data.source().starsTotal()).isEqualTo(8408);
+        assertThat(rest.pages).containsExactly(1);
+        assertThat(graphql.forkPages).isZero();
     }
 
     @Test
-    void limitsWindowWhenStarsAreTruncated() {
-        List<Map<String, Object>> newer = new ArrayList<>();
-        List<Map<String, Object>> older = new ArrayList<>();
-        for (int i = 0; i < 100; i++) {
-            newer.add(star(Instant.parse("2026-11-10T00:00:00Z").plusSeconds(i * 60L), 1 + i, null));
-            older.add(star(Instant.parse("2026-11-08T00:00:00Z").plusSeconds(i * 60L), 101 + i, null));
-        }
+    void countsWindowForksPageByPageForOlderRepository() {
+        List<String> firstPage = times(100, "2026-11-10T00:00:00Z");
+        List<String> secondPage = new ArrayList<>(times(30, "2026-10-20T00:00:00Z"));
+        secondPage.add("2026-10-01T00:00:00Z");
         FakeGraphql graphql = new FakeGraphql()
-                .starsPage(null, newer, true, "c1", 5000)
-                .starsPage("c1", older, true, "c2", 5000)
-                .activity(activity(0, 0, 0));
+                .repository("2020-01-01T00:00:00Z", 5000, 900, forks(900, true, firstPage), 40,
+                        List.of("a", "b", "a"), 12, 9)
+                .forkPage(forks(0, true, secondPage));
 
-        RepoData data = service(graphql, 200).load(REPO, ArchiveProgress.NONE);
+        RepoData data = service(graphql, new FakeRest().page(1, false), null, GithubHistoryProperties.defaults())
+                .load(REPO, ArchiveProgress.NONE);
 
-        assertThat(data.window().from()).isEqualTo(Instant.parse("2026-11-08T00:00:00Z"));
-        assertThat(data.stars()).hasSize(200);
-        assertThat(data.source().starsTotal()).isEqualTo(5000);
-        assertThat(graphql.starPages).isEqualTo(2);
+        GithubSignals.WindowActivity activity = data.aggregate().snapshot().github().activity();
+        assertThat(activity.forks()).isEqualTo(130);
+        assertThat(activity.forksTruncated()).isFalse();
+        assertThat(activity.contributors()).isEqualTo(2);
+        assertThat(graphql.forkPages).isEqualTo(1);
+    }
+
+    @Test
+    void marksForksAsTruncatedAfterPageLimit() {
+        FakeGraphql graphql = new FakeGraphql().repository("2020-01-01T00:00:00Z", 5000, 900,
+                forks(900, true, times(100, "2026-11-10T00:00:00Z")), 0, List.of(), 0, 0);
+
+        RepoData data = service(graphql, new FakeRest().page(1, false), null,
+                new GithubHistoryProperties(30, 180, 1, null, null, null))
+                .load(REPO, ArchiveProgress.NONE);
+
+        assertThat(data.aggregate().snapshot().github().activity().forks()).isEqualTo(100);
+        assertThat(data.aggregate().snapshot().github().activity().forksTruncated()).isTrue();
+    }
+
+    @Test
+    void oldRepositoryHistoryStartsAtHistoryDaysAndFollowsPages() {
+        FakeRest rest = new FakeRest()
+                .page(1, true, week(WEEK_NOV_08, 5, 5, 5, 5, 5, 0, 0))
+                .page(2, false, week(LocalDate.parse("2025-10-19").atStartOfDay(ZoneOffset.UTC).toEpochSecond(),
+                        9, 9, 9, 9, 9, 9, 9));
+        FakeGraphql graphql = new FakeGraphql().repository("2015-01-01T00:00:00Z", 100_000, 10_000,
+                forks(10_000, false, List.of()), 0, List.of(), 0, 0);
+
+        RepoData data = service(graphql, rest, null, new GithubHistoryProperties(30, 365, null, null, null, null))
+                .load(REPO, ArchiveProgress.NONE);
+
+        GithubSignals github = data.aggregate().snapshot().github();
+        assertThat(github.firstDay()).isEqualTo(LocalDate.parse("2025-11-13"));
+        assertThat(github.days()).isEqualTo(365);
+        assertThat(github.dailyStars()[github.days() - 1]).isEqualTo(5);
+        assertThat(rest.pages).containsExactly(1, 2);
     }
 
     @Test
@@ -90,28 +128,93 @@ class GithubHistoryServiceTest {
         FakeGraphql graphql = new FakeGraphql();
         graphql.gone = true;
 
-        assertThatThrownBy(() -> service(graphql, 3000).load(REPO, ArchiveProgress.NONE))
+        assertThatThrownBy(() -> service(graphql, new FakeRest(), null, GithubHistoryProperties.defaults())
+                .load(REPO, ArchiveProgress.NONE))
                 .isInstanceOf(RepoGoneException.class);
     }
 
     @Test
     void tokenIsRequired() {
-        GithubHistoryService service = new GithubHistoryService(new FakeGraphql(),
-                GithubProperties.defaults(), GithubHistoryProperties.defaults(), archive(ArchiveProperties.Mode.HTTP),
-                new StatsAggregator(CLOCK), CLOCK);
+        GithubHistoryService service = new GithubHistoryService(new FakeGraphql(), new FakeRest(),
+                GithubProperties.defaults(), GithubHistoryProperties.defaults(), archive(), provider(null), CLOCK);
 
         assertThat(service.available()).isFalse();
         assertThatThrownBy(() -> service.load(REPO, ArchiveProgress.NONE))
-                .isInstanceOfSatisfying(GithubUnavailableException.class,
-                        e -> assertThat(e.code()).isEqualTo("GITHUB_TOKEN_REQUIRED"));
+                .isInstanceOf(GithubUnavailableException.class)
+                .hasMessageContaining("token");
     }
 
-    private static GithubHistoryService service(FakeGraphql graphql, int maxStars) {
-        return new GithubHistoryService(graphql,
-                new GithubProperties(false, null, "token", null, null, null, null, null),
-                new GithubHistoryProperties(30, maxStars, null, null),
-                archive(ArchiveProperties.Mode.HTTP),
-                new StatsAggregator(CLOCK), CLOCK);
+    @Test
+    void rejectsWindowLongerThanConfigured() {
+        GithubHistoryService service = service(new FakeGraphql(), new FakeRest(), null, GithubHistoryProperties.defaults());
+
+        assertThatThrownBy(() -> service.load(REPO, 31, ArchiveProgress.NONE))
+                .isInstanceOf(InvalidWindowException.class);
+    }
+
+    @Test
+    void watchesRepositoryAndAttachesTrackerData() {
+        FakeTracker tracker = new FakeTracker();
+        GithubHistoryService service = service(newRepoGraphql(), newRepoRest(), tracker,
+                GithubHistoryProperties.defaults());
+
+        RepoData data = service.load(REPO, ArchiveProgress.NONE);
+
+        assertThat(tracker.watched).containsExactly("R_1");
+        assertThat(data.aggregate().snapshot().github().intraday()).isSameAs(tracker.intraday);
+        assertThat(data.aggregate().stats().peakStars10m()).isEqualTo(7);
+        assertThat(data.aggregate().snapshot().data().globalHourProfile()).isTrue();
+    }
+
+    @Test
+    void trackerFailureDoesNotBreakTheReport() {
+        FakeTracker tracker = new FakeTracker();
+        tracker.broken = true;
+
+        RepoData data = service(newRepoGraphql(), newRepoRest(), tracker, GithubHistoryProperties.defaults())
+                .load(REPO, ArchiveProgress.NONE);
+
+        assertThat(data.aggregate().snapshot().github().intraday()).isNull();
+    }
+
+    @Test
+    void cachesGithubDataBetweenReports() {
+        FakeGraphql graphql = newRepoGraphql();
+        FakeRest rest = newRepoRest();
+        GithubHistoryService service = service(graphql, rest, null, GithubHistoryProperties.defaults());
+
+        service.load(REPO, ArchiveProgress.NONE);
+        service.load(REPO, ArchiveProgress.NONE);
+
+        assertThat(graphql.repositoryCalls).isEqualTo(1);
+        assertThat(rest.pages).hasSize(1);
+    }
+
+    private static FakeGraphql newRepoGraphql() {
+        return new FakeGraphql().repository("2026-11-03T14:04:27Z", 8408, 4394,
+                forks(3102, false, List.of()), 1, List.of(), 38, 26);
+    }
+
+    private static FakeRest newRepoRest() {
+        return new FakeRest().page(1, false, week(WEEK_NOV_08, 1617, 2859, 1161, 202, 70, 0, 0));
+    }
+
+    private static GithubHistoryService service(
+            FakeGraphql graphql, FakeRest rest, IntradaySource tracker, GithubHistoryProperties properties) {
+        return new GithubHistoryService(graphql, rest, new GithubProperties(true, null, "token", null, null, null,
+                null, null), properties, archive(), provider(tracker), CLOCK);
+    }
+
+    private static ObjectProvider<IntradaySource> provider(IntradaySource tracker) {
+        DefaultListableBeanFactory factory = new DefaultListableBeanFactory();
+        if (tracker != null) {
+            factory.registerSingleton("tracker", tracker);
+        }
+        return factory.getBeanProvider(IntradaySource.class);
+    }
+
+    private static ArchiveProperties archive() {
+        return archive(ArchiveProperties.Mode.HTTP);
     }
 
     static ArchiveProperties archive(ArchiveProperties.Mode mode) {
@@ -119,68 +222,95 @@ class GithubHistoryServiceTest {
                 Duration.ofMinutes(5), "classpath:none", null);
     }
 
-    private static Map<String, Object> star(Instant at, long id, String createdAt) {
-        Map<String, Object> node = new HashMap<>();
-        node.put("databaseId", id);
-        node.put("login", "user" + id);
-        node.put("createdAt", createdAt);
-        return Map.of("starredAt", at.toString(), "node", node);
+    private static StarHistoryWeek week(long week, Integer... days) {
+        int total = 0;
+        for (int day : days) {
+            total += day;
+        }
+        return new StarHistoryWeek(week, total, List.of(days));
     }
 
-    private static Map<String, Object> activity(int forks, int issues, int commits) {
-        List<Object> forkNodes = new ArrayList<>();
-        for (int i = 0; i < forks; i++) {
-            forkNodes.add(Map.of("createdAt", NOW.minus(Duration.ofDays(1)).toString(),
-                    "owner", Map.of("login", "f" + i, "databaseId", 9000 + i)));
+    private static List<String> times(int count, String at) {
+        List<String> times = new ArrayList<>();
+        for (int i = 0; i < count; i++) {
+            times.add(at);
         }
-        List<Object> issueNodes = new ArrayList<>();
-        for (int i = 0; i < issues; i++) {
-            issueNodes.add(Map.of("createdAt", NOW.minus(Duration.ofDays(2)).toString(),
-                    "author", Map.of("login", "i" + i, "databaseId", 9100 + i)));
-        }
-        List<Object> commitNodes = new ArrayList<>();
-        for (int i = 0; i < commits; i++) {
-            commitNodes.add(Map.of("committedDate", NOW.minus(Duration.ofHours(3)).plusSeconds(i).toString(),
-                    "author", Map.of("user", Map.of("login", "dev", "databaseId", 42))));
-        }
-        Map<String, Object> noMore = Map.of("hasPreviousPage", false);
+        return times;
+    }
+
+    private static Map<String, Object> forks(int total, boolean hasNext, List<String> createdAt) {
         return Map.of(
-                "forks", Map.of("pageInfo", noMore, "nodes", forkNodes),
-                "issues", Map.of("pageInfo", noMore, "nodes", issueNodes),
-                "pullRequests", Map.of("pageInfo", noMore, "nodes", List.of()),
-                "defaultBranchRef", Map.of("target", Map.of("history",
-                        Map.of("pageInfo", Map.of("hasNextPage", false), "nodes", commitNodes))));
+                "totalCount", total,
+                "pageInfo", hasNext ? Map.of("hasNextPage", true, "endCursor", "c1") : Map.of("hasNextPage", false),
+                "nodes", createdAt.stream().map(at -> Map.of("createdAt", at)).toList());
     }
 
-    /** Подменяет GitHub GraphQL: страницы звёзд по курсору и запрос активности. */
-    static final class FakeGraphql implements GithubGraphqlFeignClient {
+    static final class FakeRest implements GithubReposFeignClient {
 
-        private final Map<String, Map<String, Object>> starPagesByCursor = new HashMap<>();
-        private Map<String, Object> activity = Map.of();
-        boolean gone;
-        int starPages;
+        private final Map<Integer, ResponseEntity<List<StarHistoryWeek>>> pagesByNumber = new HashMap<>();
+        final List<Integer> pages = new ArrayList<>();
 
-        FakeGraphql starsPage(String before, List<Map<String, Object>> newestLast, boolean hasPrevious,
-                              String startCursor, long total) {
-            // GraphQL отдаёт страницу от старых к новым: сортируем по starredAt
-            List<Map<String, Object>> edges = new ArrayList<>(newestLast);
-            edges.sort((a, b) -> a.get("starredAt").toString().compareTo(b.get("starredAt").toString()));
-            Map<String, Object> pageInfo = new HashMap<>();
-            pageInfo.put("hasPreviousPage", hasPrevious);
-            pageInfo.put("startCursor", startCursor);
-            starPagesByCursor.put(String.valueOf(before), Map.of(
-                    "stargazerCount", total,
-                    "stargazers", Map.of("pageInfo", pageInfo, "edges", edges)));
-            return this;
-        }
-
-        FakeGraphql activity(Map<String, Object> repository) {
-            this.activity = repository;
+        FakeRest page(int number, boolean hasNext, StarHistoryWeek... weeks) {
+            HttpHeaders headers = new HttpHeaders();
+            if (hasNext) {
+                headers.add("Link", "<https://api.github.com/repositories/1/stargazers/history?page="
+                        + (number + 1) + ">; rel=\"next\"");
+            }
+            pagesByNumber.put(number, ResponseEntity.ok().headers(headers).body(List.of(weeks)));
             return this;
         }
 
         @Override
-        @SuppressWarnings("unchecked")
+        public GithubRepoInfo repo(String owner, String name) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ResponseEntity<List<Map<String, Object>>> contributors(String owner, String name, int perPage, String anon) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ResponseEntity<List<StarHistoryWeek>> starHistory(String owner, String name, int page) {
+            pages.add(page);
+            return pagesByNumber.getOrDefault(page, ResponseEntity.ok(List.of()));
+        }
+    }
+
+    static final class FakeGraphql implements GithubGraphqlFeignClient {
+
+        private Map<String, Object> repository;
+        private final List<Map<String, Object>> forkPagesQueue = new ArrayList<>();
+        boolean gone;
+        int forkPages;
+        int repositoryCalls;
+
+        FakeGraphql repository(String createdAt, long stars, long forkCount, Map<String, Object> forks,
+                               int commits, List<String> authors, int issueCount, int pullCount) {
+            Map<String, Object> repo = new HashMap<>();
+            repo.put("id", "R_1");
+            repo.put("createdAt", createdAt);
+            repo.put("stargazerCount", stars);
+            repo.put("forkCount", forkCount);
+            repo.put("forks", forks);
+            repo.put("issues", Map.of("totalCount", issueCount, "pageInfo", Map.of("hasNextPage", false),
+                    "nodes", List.of()));
+            repo.put("pullRequests", Map.of("totalCount", pullCount, "pageInfo", Map.of("hasNextPage", false),
+                    "nodes", List.of()));
+            repo.put("defaultBranchRef", Map.of("target", Map.of("history", Map.of(
+                    "totalCount", commits,
+                    "nodes", authors.stream().map(login -> Map.of("author", Map.of("user", Map.of("login", login))))
+                            .toList()))));
+            this.repository = repo;
+            return this;
+        }
+
+        FakeGraphql forkPage(Map<String, Object> page) {
+            forkPagesQueue.add(page);
+            return this;
+        }
+
+        @Override
         public Map<String, Object> query(Map<String, Object> body) {
             if (gone) {
                 Map<String, Object> data = new HashMap<>();
@@ -188,13 +318,35 @@ class GithubHistoryServiceTest {
                 return Map.of("data", data, "errors", List.of(Map.of("type", "NOT_FOUND")));
             }
             String query = body.get("query").toString();
-            Map<String, Object> variables = (Map<String, Object>) body.get("variables");
-            if (query.contains("stargazers(")) {
-                starPages++;
-                return Map.of("data", Map.of("repository",
-                        starPagesByCursor.get(String.valueOf(variables.get("before")))));
+            if (query.contains("after: $after")) {
+                Map<String, Object> page = forkPagesQueue.get(forkPages++);
+                return Map.of("data", Map.of("repository", Map.of("forks", page)));
             }
-            return Map.of("data", Map.of("repository", activity));
+            repositoryCalls++;
+            return Map.of("data", Map.of("repository", repository));
+        }
+    }
+
+    static final class FakeTracker implements IntradaySource {
+
+        final List<String> watched = new ArrayList<>();
+        boolean broken;
+        final GithubSignals.Intraday intraday = new GithubSignals.Intraday(
+                Instant.parse("2026-11-11T10:25:00Z"), 5, new int[]{100, 101, 105, 108, -1, 112},
+                Instant.parse("2026-11-05T10:00:00Z"), new int[]{90, 100}, new double[24],
+                Instant.parse("2026-11-01T00:00:00Z"));
+
+        @Override
+        public void watch(String nodeId, RepoRef repo, Instant createdAt, long stars, long forks) {
+            if (broken) {
+                throw new IllegalStateException("database is down");
+            }
+            watched.add(nodeId);
+        }
+
+        @Override
+        public Optional<GithubSignals.Intraday> intraday(String nodeId) {
+            return Optional.of(intraday);
         }
     }
 }

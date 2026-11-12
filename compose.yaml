@@ -10,5 +10,32 @@ services:
       # токен GitHub: анализ любого репозитория по истории и возраст аккаунтов (C2)
       GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
       APP_GITHUB_ENABLED: "${APP_GITHUB_ENABLED:-false}"
+      ACCOUNT_POOL_ENABLED: "${ACCOUNT_POOL_ENABLED:-false}"
+      APP_ACCOUNT_POOL_INTERVAL: "${APP_ACCOUNT_POOL_INTERVAL:-10m}"
+      APP_TRACKER_ENABLED: "${APP_TRACKER_ENABLED:-true}"
+      APP_TRACKER_JDBC_URL: "jdbc:postgresql://postgres:5432/starguard"
+      APP_TRACKER_USERNAME: "starguard"
+      APP_TRACKER_PASSWORD: "${POSTGRES_PASSWORD:-starguard}"
+    depends_on:
+      postgres:
+        condition: service_healthy
     mem_limit: 1600m          # F3-6: heap 1280m (JAVA_TOOL_OPTIONS) + метаспейс и буферы
     restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: starguard
+      POSTGRES_USER: starguard
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-starguard}"
+    volumes:
+      - star-tracker:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U starguard -d starguard"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  star-tracker:

@@ -28,4 +28,10 @@ public interface GithubReposFeignClient {
             @PathVariable("name") String name,
             @RequestParam("per_page") int perPage,
             @RequestParam("anon") String anon);
+
+    @GetMapping("/repos/{owner}/{name}/stargazers/history")
+    ResponseEntity<List<StarHistoryWeek>> starHistory(
+            @PathVariable("owner") String owner,
+            @PathVariable("name") String name,
+            @RequestParam("page") int page);
 }

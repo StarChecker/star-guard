@@ -21,6 +21,7 @@ import ru.itmo.ipkn.starguard.core.index.RepoNotIndexedException;
 import ru.itmo.ipkn.starguard.core.scan.ScanNotFoundException;
 import ru.itmo.ipkn.starguard.core.scoring.InvalidMockModeException;
 import ru.itmo.ipkn.starguard.core.service.RepoNotFoundException;
+import ru.itmo.ipkn.starguard.core.tracker.RepoNotTrackedException;
 
 import java.net.URI;
 
@@ -33,6 +34,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(RepoNotFoundException.class)
     public ProblemDetail handleNotFound(RepoNotFoundException e, HttpServletRequest request) {
         return problem(HttpStatus.NOT_FOUND, "REPO_NOT_FOUND_IN_WINDOW", e.getMessage(), request);
+    }
+
+    @ExceptionHandler(RepoNotTrackedException.class)
+    public ProblemDetail handleNotTracked(RepoNotTrackedException e, HttpServletRequest request) {
+        return problem(HttpStatus.NOT_FOUND, "REPO_NOT_TRACKED", e.getMessage(), request);
     }
 
     @ExceptionHandler(RepoGoneException.class)

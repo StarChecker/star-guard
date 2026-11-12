@@ -21,7 +21,8 @@ public record RepoSnapshot(
         int[] starsByMinute,
         DataAvailability data,
         List<ActorProfile> starActorProfiles,
-        StarIndex starIndex
+        StarIndex starIndex,
+        GithubSignals github
 ) {
 
     public RepoSnapshot {
@@ -33,6 +34,21 @@ public record RepoSnapshot(
         starsByMinute = starsByMinute == null ? null : starsByMinute.clone();
         starActorProfiles = starActorProfiles == null ? List.of() : List.copyOf(starActorProfiles);
         starIndex = starIndex == null ? StarIndex.empty() : starIndex;
+    }
+
+    public RepoSnapshot(
+            RepoRef repo,
+            TimeWindow window,
+            Instant capturedAt,
+            EventCounts counts,
+            int uniqueActors,
+            int starActors,
+            int[] starsByMinute,
+            DataAvailability data,
+            List<ActorProfile> starActorProfiles,
+            StarIndex starIndex) {
+        this(repo, window, capturedAt, counts, uniqueActors, starActors, starsByMinute, data,
+                starActorProfiles, starIndex, null);
     }
 
     /** Snapshot без профилей акторов (C2 неактивна) и без индекса звёзд (C4 неактивна). */
@@ -81,7 +97,7 @@ public record RepoSnapshot(
 
     public RepoSnapshot withStarActorProfiles(List<ActorProfile> profiles) {
         return new RepoSnapshot(repo, window, capturedAt, counts, uniqueActors, starActors, starsByMinute,
-                data, profiles, starIndex);
+                data, profiles, starIndex, github);
     }
 
     @Override

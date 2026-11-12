@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Пул подозрительных аккаунтов</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&family=Noto+Serif:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:  #f3f7fb;
+      --color-ink:    #1b2a3a;
+      --color-muted:  #46627f;
+      --color-accent: #1859b0;
+      --font-sans:    'Geist', system-ui, sans-serif;
+      --font-serif:   'Noto Serif', 'Instrument Serif', serif;
+      --font-mono:    'Geist Mono', ui-monospace, monospace;
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-paper);
+      color: var(--color-ink);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+    }
+    .frame { max-width: 1080px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--color-muted);
+      margin-bottom: 0.5rem;
+    }
+    h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem);
+      font-weight: 400;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      color: var(--color-ink);
+      margin-bottom: 0.5rem;
+    }
+    .note { color: var(--color-muted); font-size: 0.85rem; max-width: 72ch; margin-bottom: 1.5rem; line-height: 1.5; }
+    svg { width: 100%; min-width: 1000px; display: block; }
+    @media print {
+      .diagram-container { overflow-x: visible; }
+      svg { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Flowchart · Star Guard</p>
+    <h1>Пул подозрительных аккаунтов</h1>
+    <p class="note">Кандидаты собираются только из владельцев форков репозиториев, уже отслеживаемых Star Tracker, - без поиска пустых профилей и без перебора числовых ID, поскольку GitHub Search не даёт фильтр по количеству звёзд. Пул хранит top-N accounts по node ID (rename-safe), отклонённые кандидаты попадают в ограниченный cooldown. При построении отчёта совпадения со звёздами репозитория в окне [from, to) поднимают нижнюю границу score и добавляют отдельный ряд на график.</p>
+    <div class="diagram-container">
+      <svg viewBox="0 0 1040 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="star-guard-pool-title star-guard-pool-desc">
+        <title id="star-guard-pool-title">Пул подозрительных аккаунтов</title>
+        <desc id="star-guard-pool-desc">Star Tracker поставляет отслеживаемые репозитории, сборщик обходит их форки, GraphQL проверяет профиль по критериям допуска, прошедшие попадают в пул top-N, остальные - в ограниченный cooldown; построение отчёта ищет совпадения в пуле и поднимает нижнюю границу score.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#46627f"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#1859b0"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#16707f"/></marker>
+        </defs>
+        <rect width="100%" height="100%" fill="#f3f7fb"/>
+<path d="M 208,96 H 252" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 452,96 H 496" fill="none" stroke="#16707f" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+<path d="M 596,128 V 168" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 596,232 V 280" fill="none" stroke="#1859b0" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+<path d="M 656,200 H 720 Q 728,200 728,208 V 292 Q 728,300 736,300 H 760" fill="none" stroke="#46627f" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+<path d="M 240,424 H 460 Q 468,424 468,416 V 320 Q 468,312 476,312 H 496" fill="none" stroke="#46627f" stroke-width="1.2" marker-end="url(#arrow)"/>
+<path d="M 596,344 V 392" fill="none" stroke="#1859b0" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+<rect x="580.0" y="240" width="20" height="12" rx="2" fill="#f3f7fb"/>
+<text x="590.0" y="249" fill="#1859b0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">ДА</text>
+<rect x="688.0" y="194" width="28" height="12" rx="2" fill="#f3f7fb"/>
+<text x="702.0" y="203" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">НЕТ</text>
+<rect x="400.0" y="360" width="40" height="12" rx="2" fill="#f3f7fb"/>
+<text x="420.0" y="369" fill="#526d89" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">ЛУКАП</text>
+<rect x="576.0" y="360" width="40" height="12" rx="2" fill="#f3f7fb"/>
+<text x="596.0" y="369" fill="#1859b0" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle" letter-spacing="0.06em">FLOOR</text>
+<rect x="40" y="64" width="168" height="64" rx="6" fill="#f3f7fb"/>
+<rect x="40" y="64" width="168" height="64" rx="6" fill="rgba(27,42,58,0.05)" stroke="#46627f" stroke-width="1"/>
+<text x="124.0" y="92.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Star Tracker</text>
+<text x="124.0" y="107.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">отслеживаемые репо</text>
+<rect x="252" y="64" width="200" height="64" rx="6" fill="#f3f7fb"/>
+<rect x="252" y="64" width="200" height="64" rx="6" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="352.0" y="92.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Обход форков</text>
+<text x="352.0" y="107.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">курсор в БД, приоритет rising</text>
+<rect x="496" y="64" width="200" height="64" rx="6" fill="#f3f7fb"/>
+<rect x="496" y="64" width="200" height="64" rx="6" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="596.0" y="92.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Проверка профиля</text>
+<text x="596.0" y="107.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">GraphQL · node ID</text>
+<polygon points="596,168 656,200 596,232 536,200" fill="#f3f7fb"/>
+<polygon points="596,168 656,200 596,232 536,200" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="596" y="196" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Критерии</text>
+<text x="596" y="210" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">пройдены?</text>
+<rect x="496" y="280" width="200" height="64" rx="6" fill="#f3f7fb"/>
+<rect x="496" y="280" width="200" height="64" rx="6" fill="rgba(24,89,176,0.08)" stroke="#1859b0" stroke-width="1"/>
+<text x="596.0" y="308.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Пул аккаунтов</text>
+<text x="596.0" y="323.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">top-N · периодическая переоценка</text>
+<rect x="760" y="280" width="168" height="64" rx="6" fill="#f3f7fb"/>
+<rect x="760" y="280" width="168" height="64" rx="6" fill="rgba(27,42,58,0.02)" stroke="rgba(27,42,58,0.20)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="844.0" y="308.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Cooldown</text>
+<text x="844.0" y="323.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">отвергнутые, ограниченно</text>
+<rect x="40" y="392" width="200" height="64" rx="6" fill="#f3f7fb"/>
+<rect x="40" y="392" width="200" height="64" rx="6" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="140.0" y="420.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Построение отчёта</text>
+<text x="140.0" y="435.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">окно [from, to)</text>
+<rect x="496" y="392" width="200" height="64" rx="6" fill="#f3f7fb"/>
+<rect x="496" y="392" width="200" height="64" rx="6" fill="rgba(24,89,176,0.08)" stroke="#1859b0" stroke-width="1"/>
+<text x="596.0" y="420.0" fill="#1b2a3a" font-size="12" font-weight="600" font-family="'Geist', system-ui, sans-serif" text-anchor="middle">Floor и график</text>
+<text x="596.0" y="435.0" fill="#46627f" font-size="9" font-family="'Geist Mono', ui-monospace, monospace" text-anchor="middle">suspect_accounts в snapshot</text>
+<line x1="40" y1="496" x2="1000" y2="496" stroke="rgba(27,42,58,0.10)" stroke-width="0.8"/>
+<text x="40" y="512" fill="#46627f" font-size="8" font-family="'Geist Mono', ui-monospace, monospace" letter-spacing="0.18em">ЛЕГЕНДА</text>
+<rect x="40" y="528" width="14" height="10" rx="2" fill="#ffffff" stroke="#1b2a3a" stroke-width="1"/>
+<text x="60" y="536" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Шаг</text>
+<rect x="108.3" y="528" width="14" height="10" rx="2" fill="rgba(24,89,176,0.08)" stroke="#1859b0" stroke-width="1"/>
+<text x="128.3" y="536" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Пул / итог</text>
+<rect x="207.4" y="528" width="14" height="10" rx="2" fill="rgba(27,42,58,0.02)" stroke="rgba(27,42,58,0.20)" stroke-width="1" stroke-dasharray="4,3"/>
+<text x="227.4" y="536" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Ограниченное состояние</text>
+<line x1="380.4" y1="533" x2="408.4" y2="533" stroke="#16707f" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+<text x="416.4" y="536" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Вызов GitHub</text>
+<line x1="497.9" y1="533" x2="525.9" y2="533" stroke="#1859b0" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+<text x="533.9" y="536" fill="#46627f" font-size="8.5" font-family="'Geist', system-ui, sans-serif">Основной путь данных</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

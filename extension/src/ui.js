@@ -258,7 +258,7 @@ details.evidence[open] summary::before { content: '▾ '; }
     const points = tl.points;
     const W = 296, H = 92, top = 6, bottom = 16, left = 0;
     const plotH = H - top - bottom;
-    const max = Math.max(1, ...points.map((p) => p.stars));
+    const max = Math.max(1, ...points.map((p) => Math.max(p.stars, p.suspect_accounts || 0)));
     const step = (W - left) / points.length;
     const barW = Math.max(1, step - (step > 6 ? 2 : 1));
     const tooltip = h('div', { class: 'tooltip', role: 'tooltip' });
@@ -277,12 +277,17 @@ details.evidence[open] summary::before { content: '▾ '; }
       const okH = Math.max(0, total - bad);
       if (okH > 0) svg.append(s('rect', { class: 'bar-ok', x, y: top + plotH - total + bad, width: barW, height: okH, rx: 1 }));
       if (bad > 0) svg.append(s('rect', { class: 'bar-bad', x, y: top + plotH - total, width: barW, height: bad, rx: 1 }));
+      if (p.suspect_accounts > 0) svg.append(s('circle', {
+        cx: x + barW / 2, cy: top + plotH - (p.suspect_accounts / max) * plotH,
+        r: 2.5, fill: 'var(--sg-danger)', stroke: 'var(--sg-bg)', 'stroke-width': 1,
+      }));
       const hit = s('rect', { class: 'hit', x, y: top, width: step, height: plotH });
       hit.addEventListener('mouseenter', (event) => {
         const end = new Date(new Date(p.at).getTime() + tl.bucket_minutes * 60000).toISOString();
         const span = tl.bucket_minutes >= 360 ? `${day(p.at)} ${time(p.at)}–${time(end)}` : `${time(p.at)}–${time(end)}`;
         tooltip.textContent = `${span}: ${stars(p.stars)}` +
-          (p.suspicious ? `, подозрительных ${p.suspicious}` : '');
+          (p.suspicious ? `, подозрительных ${p.suspicious}` : '') +
+          (p.suspect_accounts ? `, из пула ${p.suspect_accounts}` : '');
         tooltip.style.display = 'block';
         move(event);
       });
@@ -315,6 +320,9 @@ details.evidence[open] summary::before { content: '▾ '; }
       h('div', { class: 'legend' },
         h('span', {}, h('i', { style: 'background: var(--sg-accent); opacity: .55' }), 'обычные'),
         h('span', {}, h('i', { style: 'background: var(--sg-danger)' }), 'подозрительные')),
+      report.score.checks.some(c => c.id === 'suspect_accounts')
+        ? h('div', { class: 'note' }, 'Красные точки — звёзды аккаунтов из подозрительного пула. Выборка неполная: последние 100 звёзд аккаунта. С оценкой всплесков не суммируются.')
+        : null,
       tl.estimated
         ? h('div', { class: 'note' }, 'Подозрительные внутри часа распределены пропорционально: индекс хранит аккаунты по часам.')
         : null);

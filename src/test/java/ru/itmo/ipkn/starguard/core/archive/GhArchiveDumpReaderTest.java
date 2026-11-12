@@ -42,6 +42,22 @@ class GhArchiveDumpReaderTest {
         assertThat(filteredErrors).isEqualTo(1);
     }
 
+    @Test
+    void countsLinesBytesAndErrorsForMetrics() throws IOException {
+        String first = line("1", "WatchEvent", "demo/star-guard");
+        String second = line("2", "PushEvent", "other/repo");
+        String dump = String.join("\n", first, "", second, "{not-json", "   ");
+
+        List<GhEvent> events = new ArrayList<>();
+        ParseStats stats = GhArchiveDumpReader.readCounted(gzip(dump), parser,
+                EventFilter.repo("demo/star-guard"), events::add);
+
+        assertThat(events).extracting(GhEvent::eventId).containsExactly("1");
+        assertThat(stats.lines()).isEqualTo(3);
+        assertThat(stats.bytes()).isEqualTo(first.length() + second.length() + "{not-json".length());
+        assertThat(stats.errors()).isEqualTo(1);
+    }
+
     private static String line(String id, String type, String repo) {
         return "{\"id\":\"" + id + "\",\"type\":\"" + type + "\",\"actor\":{\"id\":7,\"login\":\"dev\"},"
                 + "\"repo\":{\"id\":42,\"name\":\"" + repo + "\"},\"payload\":{\"action\":\"x\"},"

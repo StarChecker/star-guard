@@ -8,6 +8,8 @@ import jakarta.annotation.PreDestroy;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import ru.itmo.ipkn.starguard.core.config.ArchiveProperties;
@@ -17,6 +19,7 @@ import ru.itmo.ipkn.starguard.core.domain.GhEvent;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.StarIndex;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
+import ru.itmo.ipkn.starguard.core.metrics.ParseMetrics;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -58,12 +61,33 @@ public class HttpGhArchiveClient implements GhArchiveClient {
     private final Cache<@NonNull String, CachedHour> cache;
     private final StarIndexProperties starIndexProperties;
     private final Cache<@NonNull Instant, StarIndex> starIndexCache;
+    private final ParseMetrics parseMetrics;
 
     public HttpGhArchiveClient(
             GhArchiveFeignClient feignClient,
             GhArchiveParser parser,
             ArchiveProperties properties,
             StarIndexProperties starIndexProperties) {
+        this(feignClient, parser, properties, starIndexProperties, (ParseMetrics) null);
+    }
+
+    @Autowired
+    public HttpGhArchiveClient(
+            GhArchiveFeignClient feignClient,
+            GhArchiveParser parser,
+            ArchiveProperties properties,
+            StarIndexProperties starIndexProperties,
+            ObjectProvider<ParseMetrics> parseMetrics) {
+        this(feignClient, parser, properties, starIndexProperties, parseMetrics.getIfAvailable());
+    }
+
+    HttpGhArchiveClient(
+            GhArchiveFeignClient feignClient,
+            GhArchiveParser parser,
+            ArchiveProperties properties,
+            StarIndexProperties starIndexProperties,
+            ParseMetrics parseMetrics) {
+        this.parseMetrics = parseMetrics;
         this.feignClient = feignClient;
         this.parser = parser;
         this.properties = properties;
@@ -179,6 +203,9 @@ public class HttpGhArchiveClient implements GhArchiveClient {
                 return result;
             } catch (TransientArchiveException | RetryableException e) {
                 lastError = e;
+                if (parseMetrics != null) {
+                    parseMetrics.attemptFailed(ParseMetrics.SOURCE_SCAN);
+                }
                 if (attempt < properties.retries()) {
                     sleepBackoff(attempt);
                 }
@@ -188,6 +215,7 @@ public class HttpGhArchiveClient implements GhArchiveClient {
         String repoFullName = repo.fullName();
         log.warn("GH Archive hour {} for {} failed after retries: {}",
                 hour, repoFullName, lastError == null ? "unknown" : lastError.getMessage());
+        recordHour(new HourReadResult(hour, 0, false, true));
         return HourResult.failed(hour);
     }
 
@@ -195,6 +223,7 @@ public class HttpGhArchiveClient implements GhArchiveClient {
         String file = HOUR_FORMAT.format(hour.atZone(ZoneOffset.UTC)) + ".json.gz";
         try (Response response = feignClient.download(file)) {
             if (response.status() == 404) {
+                recordHour(new HourReadResult(hour, 0, true, false));
                 return HourResult.missing(hour);
             }
             if (response.status() < 200 || response.status() >= 300) {
@@ -213,9 +242,10 @@ public class HttpGhArchiveClient implements GhArchiveClient {
             EventFilter filter = starIndex == null
                     ? EventFilter.repo(repo.fullName())
                     : EventFilter.repo(repo.fullName()).or(EventFilter.stars());
-            int parseErrors;
+            ParseStats stats;
+            long started = System.nanoTime();
             try (InputStream body = response.body().asInputStream()) {
-                parseErrors = GhArchiveDumpReader.read(body, parser, filter, event -> {
+                stats = GhArchiveDumpReader.readCounted(body, parser, filter, event -> {
                     if (event.repoFullName().equalsIgnoreCase(repo.fullName())) {
                         events.add(event);
                     }
@@ -224,6 +254,9 @@ public class HttpGhArchiveClient implements GhArchiveClient {
                     }
                 });
             }
+            int parseErrors = stats.errors();
+            recordHour(new HourReadResult(hour, parseErrors, false, false,
+                    stats.lines(), stats.bytes(), System.nanoTime() - started));
             StarIndex hourIndex = starIndex == null ? StarIndex.empty() : starIndex.build(1);
             if (hourIndex.available()) {
                 log.debug("GH Archive hour {}: star index {} repos, {} pairs{}", hour,
@@ -233,6 +266,12 @@ public class HttpGhArchiveClient implements GhArchiveClient {
             return new HourResult(hour, List.copyOf(events), parseErrors, false, false, false, hourIndex);
         } catch (IOException e) {
             throw new TransientArchiveException("I/O error while fetching " + file, e);
+        }
+    }
+
+    private void recordHour(HourReadResult result) {
+        if (parseMetrics != null) {
+            parseMetrics.hourRead(ParseMetrics.SOURCE_SCAN, result);
         }
     }
 

@@ -174,7 +174,9 @@
     onScan: () => startScan(),
     onScanDay: () => startScan(24),
     onRetry: () => { send({ type: 'clearCache' }).then(() => loadRepo(currentRepo)); },
-    onOpenOptions: () => window.open(chrome.runtime.getURL('options.html'), '_blank'),
+    // Из веб-страницы Chrome блокирует навигацию на chrome-extension:// (ERR_BLOCKED_BY_CLIENT),
+    // поэтому открываем настройки через service worker.
+    onOpenOptions: () => send({ type: 'openOptions' }),
     onPeriodChange: (period) => changePeriod(period),
     onClose: () => { floatingOpen = false; floatingClosed = true; renderRepo(); },
   };

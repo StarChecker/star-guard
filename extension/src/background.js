@@ -246,6 +246,9 @@ async function handle(message) {
       const alive = result.ok || result.status === 503;
       return { ok: alive, code: alive ? 'OK' : result.code, apiBase: result.apiBase, message: result.message };
     }
+    case 'openOptions':
+      await chrome.runtime.openOptionsPage();
+      return { ok: true };
     case 'serverInfo': {
       // для настроек: откуда сейчас взят адрес; force — перечитать server.json
       if (message.force) remote = null;

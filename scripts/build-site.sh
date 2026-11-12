@@ -10,6 +10,8 @@ mkdir -p "$out/ext"
 cp -r "$root/site/." "$out/"
 cp "$root/extension/src/ui.js" "$root/extension/src/theme.js" "$root/extension/preview/samples.js" \
    "$root/extension/icons/icon-32.png" "$out/ext/"
+# схемы архитектуры — на Pages рядом с лендингом
+cp -r "$root/docs/architecture" "$out/architecture"
 "$root/scripts/pack-extension.sh" "$out/star-guard-extension.zip" >/dev/null
 # адрес сервера по умолчанию — тот же, что попал в сборку
 unzip -p "$out/star-guard-extension.zip" src/config.js > "$out/ext/config.js"

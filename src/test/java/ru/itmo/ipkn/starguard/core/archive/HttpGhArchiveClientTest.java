@@ -4,6 +4,8 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -11,6 +13,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import ru.itmo.ipkn.starguard.core.domain.GhEvent;
 import ru.itmo.ipkn.starguard.core.domain.RepoRef;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
+import ru.itmo.ipkn.starguard.core.metrics.StarGuardMetrics;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -56,6 +59,9 @@ class HttpGhArchiveClientTest {
 
     @Autowired
     private GhArchiveClient client;
+
+    @Autowired
+    private MeterRegistry registry;
 
     @Test
     void streamsGzipFiltersRepositoryAndReportsMissingHours() throws IOException {
@@ -144,6 +150,42 @@ class HttpGhArchiveClientTest {
             assertThat(result.starIndex().actors("other/c")).isEmpty();
         }
         assertThat(second.cached()).isTrue();
+    }
+
+    @Test
+    void recordsParseMetricsForScan() throws IOException {
+        TimeWindow window = new TimeWindow(
+                Instant.parse("2026-11-07T00:00:00Z"), Instant.parse("2026-11-07T02:00:00Z"), 2);
+        WIRE_MOCK.stubFor(get(urlEqualTo("/2026-11-07-0.json.gz"))
+                .willReturn(aResponse().withStatus(200).withBody(gzip("""
+                        {"id":"21","type":"WatchEvent","repo":{"id":1,"name":"demo/metered"},"actor":{"id":1,"login":"u1"},"created_at":"2026-11-07T00:01:00Z"}
+                        {"id":"22","type":"PushEvent","repo":{"id":2,"name":"other/repo"},"actor":{"id":2,"login":"u2"},"created_at":"2026-11-07T00:02:00Z"}
+                        {broken-json
+                        """))));
+        WIRE_MOCK.stubFor(get(urlEqualTo("/2026-11-07-1.json.gz"))
+                .willReturn(aResponse().withStatus(404)));
+        double lines = count(StarGuardMetrics.PARSE_LINES, null);
+        double errors = count(StarGuardMetrics.PARSE_ERRORS, null);
+        double parsed = count(StarGuardMetrics.PARSE_HOURS, "parsed");
+        double missing = count(StarGuardMetrics.PARSE_HOURS, "missing");
+
+        client.fetchEvents(new RepoRef("demo", "metered"), window);
+
+        assertThat(count(StarGuardMetrics.PARSE_LINES, null) - lines).isEqualTo(3);
+        assertThat(count(StarGuardMetrics.PARSE_ERRORS, null) - errors).isEqualTo(1);
+        assertThat(count(StarGuardMetrics.PARSE_HOURS, "parsed") - parsed).isEqualTo(1);
+        assertThat(count(StarGuardMetrics.PARSE_HOURS, "missing") - missing).isEqualTo(1);
+        assertThat(registry.get(StarGuardMetrics.PARSE_LINES_PER_SECOND).tag("source", "scan").gauge().value())
+                .isPositive();
+    }
+
+    private double count(String name, String outcome) {
+        var search = registry.find(name).tag("source", "scan");
+        if (outcome != null) {
+            search = search.tag("outcome", outcome);
+        }
+        Counter counter = search.counter();
+        return counter == null ? 0 : counter.count();
     }
 
     private static byte[] gzip(String content) throws IOException {

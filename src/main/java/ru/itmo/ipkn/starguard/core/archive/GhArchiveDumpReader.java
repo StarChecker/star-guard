@@ -30,20 +30,33 @@ public final class GhArchiveDumpReader {
      */
     public static int read(InputStream gzipped, GhArchiveParser parser, EventFilter filter,
                            Consumer<GhEvent> sink) throws IOException {
-        LineCounter errors = new LineCounter();
+        return readCounted(gzipped, parser, filter, sink).errors();
+    }
+
+    /**
+     * То же, что {@link #read}, но возвращает и объём дампа — для метрик разбора (X-2).
+     * Счёт строк и байт не добавляет проходов по данным: это два сложения на строку.
+     */
+    public static ParseStats readCounted(InputStream gzipped, GhArchiveParser parser, EventFilter filter,
+                                         Consumer<GhEvent> sink) throws IOException {
+        LineCounter counter = new LineCounter();
         try (GZIPInputStream gzip = new GZIPInputStream(gzipped, GZIP_BUFFER_BYTES)) {
             int oversized = new NdjsonLineReader(MAX_LINE_BYTES).forEachLine(gzip, (buffer, offset, length) -> {
+                counter.lines++;
+                counter.bytes += length;
                 try {
                     parser.parse(buffer, offset, length, filter).ifPresent(sink);
                 } catch (MalformedEventException e) {
-                    errors.count++;
+                    counter.errors++;
                 }
             });
-            return errors.count + oversized;
+            return new ParseStats(counter.lines + oversized, counter.bytes, counter.errors + oversized);
         }
     }
 
     private static final class LineCounter {
-        private int count;
+        private long lines;
+        private long bytes;
+        private int errors;
     }
 }

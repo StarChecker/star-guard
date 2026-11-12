@@ -1,6 +1,10 @@
 package ru.itmo.ipkn.starguard.core.metrics;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import ru.itmo.ipkn.starguard.core.archive.EventFilter;
+import ru.itmo.ipkn.starguard.core.archive.GhArchiveBulkReader;
+import ru.itmo.ipkn.starguard.core.archive.HourReadResult;
+import ru.itmo.ipkn.starguard.core.archive.TransientArchiveException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import ru.itmo.ipkn.starguard.core.config.IndexMemoryProperties;
@@ -72,5 +76,54 @@ class MetricsTest {
         assertThat(registry.get(StarGuardMetrics.INDEX_AGE).gauge().value()).isEqualTo(300);
         assertThat(registry.get(StarGuardMetrics.INDEX_MEMORY).gauge().value()).isEqualTo(300.0 * 1024 * 1024);
         assertThat(registry.get(StarGuardMetrics.INDEX_MEMORY_OVER_BUDGET).gauge().value()).isZero();
+    }
+
+    @Test
+    void parseMetricsCountLinesHoursAndRate() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        ParseMetrics metrics = new ParseMetrics(registry);
+
+        metrics.hourRead(ParseMetrics.SOURCE_INDEX, new HourReadResult(NOW, 3, false, false,
+                2_000_000, 900_000_000, 4_000_000_000L));
+        metrics.hourRead(ParseMetrics.SOURCE_INDEX, new HourReadResult(NOW.plusSeconds(3600), 0, true, false));
+        metrics.attemptFailed(ParseMetrics.SOURCE_INDEX);
+
+        assertThat(registry.get(StarGuardMetrics.PARSE_LINES).tag("source", "index").counter().count())
+                .isEqualTo(2_000_000);
+        assertThat(registry.get(StarGuardMetrics.PARSE_BYTES).counter().count()).isEqualTo(900_000_000);
+        assertThat(registry.get(StarGuardMetrics.PARSE_ERRORS).counter().count()).isEqualTo(3);
+        assertThat(registry.get(StarGuardMetrics.PARSE_HOURS).tag("outcome", "parsed").counter().count()).isEqualTo(1);
+        assertThat(registry.get(StarGuardMetrics.PARSE_HOURS).tag("outcome", "missing").counter().count()).isEqualTo(1);
+        assertThat(registry.get(StarGuardMetrics.PARSE_HOURS).tag("outcome", "error").counter().count()).isEqualTo(1);
+        assertThat(registry.get(StarGuardMetrics.PARSE_HOUR_DURATION).timer().count()).isEqualTo(1);
+        assertThat(registry.get(StarGuardMetrics.PARSE_LINES_PER_SECOND).tag("source", "index").gauge().value())
+                .isEqualTo(500_000);
+    }
+
+    @Test
+    void meteredBulkReaderRecordsResultsAndFailedAttempts() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        ParseMetrics metrics = new ParseMetrics(registry);
+        GhArchiveBulkReader flaky = new GhArchiveBulkReader() {
+            private int calls;
+
+            @Override
+            public HourReadResult readHour(Instant hour, java.util.function.Consumer<ru.itmo.ipkn.starguard.core.domain.GhEvent> sink) {
+                if (calls++ == 0) {
+                    throw new TransientArchiveException("boom");
+                }
+                return new HourReadResult(hour, 0, false, false, 10, 1000, 1_000_000);
+            }
+        };
+        GhArchiveBulkReader reader = new MeteredGhArchiveBulkReader(flaky, metrics);
+
+        assertThatThrownBy(() -> reader.readHour(NOW, EventFilter.ALL, event -> { }))
+                .isInstanceOf(TransientArchiveException.class);
+        HourReadResult result = reader.readHour(NOW, EventFilter.ALL, event -> { });
+
+        assertThat(result.lines()).isEqualTo(10);
+        assertThat(registry.get(StarGuardMetrics.PARSE_HOURS).tag("outcome", "error").counter().count()).isEqualTo(1);
+        assertThat(registry.get(StarGuardMetrics.PARSE_HOURS).tag("outcome", "parsed").counter().count()).isEqualTo(1);
+        assertThat(registry.get(StarGuardMetrics.PARSE_LINES).tag("source", "index").counter().count()).isEqualTo(10);
     }
 }

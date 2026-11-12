@@ -87,7 +87,9 @@ jobs:
           for file in extension/src/*.js extension/preview/*.js; do node --check "$file"; done
 
       - name: Pack extension
-        run: cd extension && zip -r ../star-guard-extension.zip . -x 'preview/*'
+        env:
+          STAR_GUARD_API_URL: ${{ vars.STAR_GUARD_API_URL }}
+        run: scripts/pack-extension.sh star-guard-extension.zip
 
       - name: Upload extension zip
         uses: actions/upload-artifact@v4

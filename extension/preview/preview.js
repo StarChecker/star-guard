@@ -5,7 +5,7 @@
   const THEME = window.StarGuardTheme;
   const S = window.STAR_GUARD_SAMPLES;
   const noop = () => {};
-  const actions = { onScan: noop, onScanDay: noop, onRetry: noop, onOpenOptions: noop, onWindowChange: noop };
+  const actions = { onScan: noop, onScanDay: noop, onRetry: noop, onOpenOptions: noop, onPeriodChange: noop };
 
   function el(tag, attrs, text) {
     const node = document.createElement(tag);
@@ -63,13 +63,14 @@
     const grid = el('div', { className: 'grid' });
     card(grid, { kind: 'report', data: S.farm });
     card(grid, { kind: 'report', data: S.healthy });
-    card(grid, { kind: 'report', data: S.history });
+    card(grid, { kind: 'report', data: S.history, period: { kind: 'days', days: 30 } });
     col.append(grid);
 
     col.append(el('h2', {}, 'Остальные состояния'));
     const states = el('div', { className: 'grid' });
     card(states, { kind: 'not_indexed', hours: 6, preview: S.preview });
     card(states, { kind: 'out_of_window', hours: 24 });
+    card(states, { kind: 'no_data', period: { kind: 'days', days: 30, to: '2025-05-01' } });
     card(states, { kind: 'scanning', done: 2, total: 6, hours: 6 });
     card(states, { kind: 'no_data', hours: 6 });
     card(states, { kind: 'gone', hours: 6 });

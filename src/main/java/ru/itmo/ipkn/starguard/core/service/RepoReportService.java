@@ -8,6 +8,7 @@ import ru.itmo.ipkn.starguard.core.archive.ArchiveFetchResult;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveProgress;
 import ru.itmo.ipkn.starguard.core.archive.ArchiveUnavailableException;
 import ru.itmo.ipkn.starguard.core.archive.GhArchiveClient;
+import ru.itmo.ipkn.starguard.core.archive.InvalidWindowException;
 import ru.itmo.ipkn.starguard.core.archive.TimeWindowCalculator;
 import ru.itmo.ipkn.starguard.core.config.ReportProperties;
 import ru.itmo.ipkn.starguard.core.config.ScoringProperties;
@@ -19,6 +20,7 @@ import ru.itmo.ipkn.starguard.core.domain.StarTimeline;
 import ru.itmo.ipkn.starguard.core.domain.TimeWindow;
 import ru.itmo.ipkn.starguard.core.github.AccountAgeEnricher;
 import ru.itmo.ipkn.starguard.core.github.GithubHistoryService;
+import ru.itmo.ipkn.starguard.core.github.HistoryPeriod;
 import ru.itmo.ipkn.starguard.core.scoring.MockMode;
 import ru.itmo.ipkn.starguard.core.scoring.MockModeContext;
 import ru.itmo.ipkn.starguard.core.scoring.RepoScore;
@@ -27,6 +29,7 @@ import ru.itmo.ipkn.starguard.core.scoring.github.GithubScoringEngine;
 import ru.itmo.ipkn.starguard.core.stats.RepoAggregate;
 import ru.itmo.ipkn.starguard.core.stats.StatsAggregator;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -94,7 +97,24 @@ public class RepoReportService {
 
     public RepoReport historyReport(
             RepoRef repo, Integer requestedDays, MockMode requestedMockMode, ArchiveProgress progress) {
-        return buildReport(repo, historyService.load(repo, requestedDays, progress), requestedMockMode);
+        return historyReport(repo, requestedDays, null, false, requestedMockMode, progress);
+    }
+
+    /**
+     * История GitHub за период: последние {@code days} дней до даты {@code to}
+     * включительно (например, 30 дней до 2025-05-01) или вся история репозитория.
+     */
+    public RepoReport historyReport(
+            RepoRef repo,
+            Integer requestedDays,
+            LocalDate to,
+            boolean all,
+            MockMode requestedMockMode,
+            ArchiveProgress progress) {
+        HistoryPeriod period = all
+                ? (to == null ? HistoryPeriod.entireHistory() : new HistoryPeriod(null, to, true))
+                : (to == null ? HistoryPeriod.days(requestedDays) : HistoryPeriod.until(requestedDays, to));
+        return buildReport(repo, historyService.load(repo, period, progress), requestedMockMode);
     }
 
     public boolean githubFirst() {
@@ -111,16 +131,54 @@ public class RepoReportService {
 
     public RepoReport getReport(
             RepoRef repo, Integer requestedHours, Integer requestedDays, MockMode requestedMockMode) {
-        if (githubFirst()) {
-            return historyReport(repo, requestedDays, requestedMockMode, ArchiveProgress.NONE);
+        return getReport(repo, requestedHours, requestedDays, null, false, requestedMockMode);
+    }
+
+    /**
+     * Явный период ({@code days}/{@code to}/{@code all}) всегда идёт в историю GitHub:
+     * GH Archive пригоден только для часовых окон. Явные {@code hours} обслуживает
+     * индекс/архив, а без параметров сохраняется прежний выбор {@code app.report.source}.
+     */
+    public RepoReport getReport(
+            RepoRef repo,
+            Integer requestedHours,
+            Integer requestedDays,
+            LocalDate to,
+            boolean all,
+            MockMode requestedMockMode) {
+        boolean explicitPeriod = all || requestedDays != null || to != null;
+        if (explicitPeriod) {
+            if (requestedHours != null) {
+                throw new InvalidWindowException("hours cannot be combined with days/all/to");
+            }
+            if (all && requestedDays != null) {
+                throw new InvalidWindowException("days and all are mutually exclusive");
+            }
+            if (to != null && !all && requestedDays == null) {
+                throw new InvalidWindowException("to requires days or all");
+            }
+            return historyReport(repo, requestedDays, to, all, requestedMockMode, ArchiveProgress.NONE);
         }
-        return indexReport(repo, requestedHours, requestedMockMode);
+        if (requestedHours != null) {
+            return reportProperties.source() == ReportProperties.Source.GITHUB
+                    ? historyReport(repo, null, null, false, requestedMockMode, ArchiveProgress.NONE)
+                    : indexReport(repo, requestedHours, requestedMockMode);
+        }
+        return githubFirst()
+                ? historyReport(repo, null, null, false, requestedMockMode, ArchiveProgress.NONE)
+                : indexReport(repo, null, requestedMockMode);
     }
 
     public RepoReport indexReport(RepoRef repo, Integer requestedHours, MockMode requestedMockMode) {
         RepoDataProvider indexed = indexedDataProvider.getIfAvailable();
         if (indexed != null) {
-            return buildReport(repo, indexed.load(repo, requestedHours), requestedMockMode);
+            try {
+                return buildReport(repo, indexed.load(repo, requestedHours), requestedMockMode);
+            } catch (InvalidWindowException e) {
+                // hours больше окна индекса: compose невозможен, докачиваем напрямую из GH Archive.
+                // Медленный путь (гигабайты дампов за 24 ч), поэтому для UI лучше фоновый скан.
+                return scanArchive(repo, requestedHours, requestedMockMode, ArchiveProgress.NONE);
+            }
         }
         return scanArchive(repo, requestedHours, requestedMockMode, ArchiveProgress.NONE);
     }

@@ -45,7 +45,10 @@ GET /api/v1/repos/... ──► IndexRepoDataProvider ──► RepoStatsCompose
   уникальных акторов (сумма по часам — верхняя граница без дедупликации;
   для PoC-моков этого достаточно).
 - Запрос с `hours < app.index.window-hours` складывает последние `hours`
-  часовых агрегатов; `hours` больше окна индекса → 400.
+  часовых агрегатов. Если `hours` больше окна индекса (но не больше 24), отчёт
+  не падает с 400: сервер дочитывает недостающие дампы GH Archive напрямую —
+  это медленный путь, для UI лучше фоновый скан. Окно индекса настраивается
+  `app.index.window-hours` (1–24).
 - `GET /api/v1/index/repos?limit=1000` отдаёт список: `rank`, `owner`, `name`,
   `full_name`, `stars` за окно, а также `window`, `built_at`, `hours_loaded`,
   `missing_hours`, `parse_errors`. Клиент заранее видит, какие репозитории

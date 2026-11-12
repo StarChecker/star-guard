@@ -38,4 +38,55 @@ class GithubTimelineTest {
         assertThat(timeline.suspiciousStars()).isEqualTo(1200);
         assertThat(timeline.suspiciousByCheck()).containsEntry(CheckIds.DAILY_BURST, 1200);
     }
+
+    @Test
+    void bucketsLongPeriodsIntoWeeksAndMonths() {
+        LocalDate first = LocalDate.parse("2025-01-06");   // понедельник
+        int[] daily = new int[200];
+        java.util.Arrays.fill(daily, 10);
+        GithubSignals github = new GithubSignals("R_1", Instant.parse("2015-01-01T00:00:00Z"), 2000, 100,
+                first, daily,
+                new GithubSignals.WindowActivity(first.atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
+                        first.plusDays(200).atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
+                        2000, 0, false, 0, 0, 0, 0),
+                null);
+        RepoScore score = new RepoScore(0, ScoreLevel.LOW, 0.0, false, List.of(), false, List.of(),
+                Instant.parse("2026-11-06T00:00:00Z"));
+
+        StarTimeline weekly = StarTimelineService.daily(github, score);
+
+        assertThat(weekly.bucketMinutes()).isEqualTo(7 * 24 * 60);
+        assertThat(weekly.points()).hasSize(29);
+        assertThat(weekly.points().getFirst().at()).isEqualTo(
+                first.atStartOfDay(java.time.ZoneOffset.UTC).toInstant());
+        assertThat(weekly.points().getFirst().stars()).isEqualTo(70);
+        assertThat(weekly.points().getLast().stars()).isEqualTo(2000 - 28 * 70);
+
+        int[] year = new int[365];
+        java.util.Arrays.fill(year, 1);
+        GithubSignals longGithub = new GithubSignals("R_1", Instant.parse("2010-01-01T00:00:00Z"), 1000, 10,
+                first, year,
+                new GithubSignals.WindowActivity(first.atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
+                        first.plusDays(365).atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
+                        365, 0, false, 0, 0, 0, 0),
+                null);
+        StarTimeline yearly = StarTimelineService.daily(longGithub, score);
+
+        assertThat(yearly.bucketMinutes()).isEqualTo(7 * 24 * 60);
+        assertThat(yearly.points()).hasSize(53);
+
+        int[] multiYear = new int[800];
+        java.util.Arrays.fill(multiYear, 1);
+        GithubSignals huge = new GithubSignals("R_1", Instant.parse("2010-01-01T00:00:00Z"), 5000, 10,
+                first, multiYear,
+                new GithubSignals.WindowActivity(first.atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
+                        first.plusDays(800).atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
+                        800, 0, false, 0, 0, 0, 0),
+                null);
+        StarTimeline monthly = StarTimelineService.daily(huge, score);
+
+        assertThat(monthly.bucketMinutes()).isEqualTo(30 * 24 * 60);
+        assertThat(monthly.points().getFirst().at()).isEqualTo(
+                LocalDate.parse("2025-01-01").atStartOfDay(java.time.ZoneOffset.UTC).toInstant());
+    }
 }

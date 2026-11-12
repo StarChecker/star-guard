@@ -3,9 +3,19 @@
 // упирается в CORS. Принимаем только сообщения фиксированных типов с проверенным именем
 // репозитория — произвольный URL страница подсунуть не может.
 
+importScripts('period.js');
+
+const Period = self.StarGuardPeriod;
+const clampHours = Period.clampHours;
+const normalizePeriod = Period.normalize;
+const periodKey = Period.key;
+const periodQuery = Period.query;
+const periodBody = Period.body;
+
 const DEFAULT_SETTINGS = {
   apiBase: 'http://localhost:8080',
-  hours: 6,
+  hours: 6,          // короткое окно для точек в списках и обратной совместимости
+  period: null,      // { kind: 'hours'|'days'|'all', hours?, days?, to? }
   listDots: true,
 };
 
@@ -21,8 +31,13 @@ const summaryCache = new Map();  // key → { at, value }
 async function settings() {
   const stored = await chrome.storage.sync.get(DEFAULT_SETTINGS);
   const apiBase = String(stored.apiBase || DEFAULT_SETTINGS.apiBase).replace(/\/+$/, '');
-  const hours = Math.min(24, Math.max(1, Number(stored.hours) || DEFAULT_SETTINGS.hours));
-  return { apiBase, hours, listDots: stored.listDots !== false };
+  const hours = clampHours(stored.hours, DEFAULT_SETTINGS.hours);
+  return {
+    apiBase,
+    hours,
+    period: normalizePeriod(stored.period, hours),
+    listDots: stored.listDots !== false,
+  };
 }
 
 function fresh(cache, key, ttl) {
@@ -63,15 +78,15 @@ async function call(path, init) {
   return { ok: true, data: body, apiBase };
 }
 
-async function report(repo, hours) {
-  const key = repo.toLowerCase() + '|' + hours;
+async function report(repo, period) {
+  const key = repo.toLowerCase() + '|' + periodKey(period);
   const cached = fresh(reportCache, key, REPORT_TTL_MS);
   if (cached) {
     return cached;
   }
   const [owner, name] = repo.split('/');
   const result = await call(
-    `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}?hours=${hours}`);
+    `/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}?${periodQuery(period)}`);
   if (result.ok) {
     reportCache.set(key, { at: Date.now(), value: result });
   }
@@ -108,12 +123,12 @@ async function batch(repos, hours) {
   return { ok: true, data: out };
 }
 
-async function scanStart(repo, hours) {
+async function scanStart(repo, period) {
   const [owner, name] = repo.split('/');
   return call('/api/v1/scans', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ owner, name, hours }),
+    body: JSON.stringify({ owner, name, ...periodBody(period) }),
   });
 }
 
@@ -122,7 +137,7 @@ async function scanStatus(id) {
   if (result.ok && result.data.status === 'done' && result.data.report) {
     const repo = result.data.repo.full_name;
     const hours = result.data.report.window.hours;
-    reportCache.set(repo.toLowerCase() + '|' + hours, {
+    reportCache.set(repo.toLowerCase() + '|h' + hours, {
       at: Date.now(),
       value: { ok: true, data: result.data.report, apiBase: result.apiBase },
     });
@@ -135,16 +150,18 @@ async function handle(message) {
     return { ok: false, code: 'BAD_MESSAGE' };
   }
   const current = await settings();
-  const hours = Number.isInteger(message.hours) ? Math.min(24, Math.max(1, message.hours)) : current.hours;
+  const hours = Number.isInteger(message.hours) ? clampHours(message.hours, current.hours) : current.hours;
+  const period = normalizePeriod(message.period, hours);
   switch (message.type) {
     case 'settings':
       return { ok: true, data: current };
     case 'report':
       if (!REPO_RE.test(message.repo || '')) return { ok: false, code: 'BAD_REPO' };
-      return report(message.repo, hours);
+      return report(message.repo, period);
     case 'batch': {
       const repos = Array.isArray(message.repos) ? message.repos.filter((r) => REPO_RE.test(r)) : [];
       if (repos.length === 0) return { ok: true, data: {} };
+      // Точки в списках — сводки индекса: только часовое окно (максимум 24 ч).
       return batch(repos.slice(0, 200), hours);
     }
     case 'preview': {
@@ -154,7 +171,7 @@ async function handle(message) {
     }
     case 'scanStart':
       if (!REPO_RE.test(message.repo || '')) return { ok: false, code: 'BAD_REPO' };
-      return scanStart(message.repo, hours);
+      return scanStart(message.repo, period);
     case 'scanStatus':
       if (!SCAN_ID_RE.test(message.id || '')) return { ok: false, code: 'BAD_SCAN_ID' };
       return scanStatus(message.id);
